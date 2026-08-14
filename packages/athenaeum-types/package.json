@@ -1,0 +1,25 @@
+{
+  "name": "@xfeatures/athenaeum-types",
+  "version": "0.1.0",
+  "description": "TypeScript types for Xfeatures Athenaeum's REST API. Hand-authored from the Worker's own DTOs and schemas, not generated -- kept in sync manually until the surface stabilizes.",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.map"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

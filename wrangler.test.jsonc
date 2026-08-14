@@ -1,0 +1,89 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Test-only variant of wrangler.jsonc: identical bindings except AI Search
+  // is omitted. AI Search has no local simulation -- even `wrangler dev`
+  // proxies it to a real remote instance -- so the full config can't boot
+  // the test pool until that instance exists (an account-level
+  // setup step, not something a local test run can depend on). No test in
+  // this suite exercises the search adapter directly; they call the
+  // repositories/services/pure functions that don't touch env.AI_SEARCH.
+  "name": "knowledge-core",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-14",
+
+  "vars": {
+    "ENVIRONMENT": "development",
+    "DEFAULT_CLASSIFICATION": "INTERNAL",
+    "LOG_CONTENT_DEBUG": false
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "knowledge-core-db-dev",
+      "database_id": "1c609bd2-7d9b-479a-8b0e-292ecf1f992c"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "DOCS",
+      "bucket_name": "knowledge-core-documents-dev"
+    }
+  ],
+
+  "queues": {
+    "producers": [
+      {
+        "binding": "INGESTION_QUEUE",
+        "queue": "knowledge-core-ingestion-dev"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "knowledge-core-ingestion-dev",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30,
+        "max_retries": 5,
+        "dead_letter_queue": "knowledge-core-ingestion-dlq-dev"
+      },
+      {
+        "queue": "knowledge-core-ingestion-dlq-dev",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30,
+        "max_retries": 1
+      }
+    ]
+  },
+
+  "workflows": [
+    {
+      "binding": "PUBLISH_WORKFLOW",
+      "name": "knowledge-core-publish-dev",
+      "class_name": "PublishWorkflow"
+    }
+  ],
+
+  "ratelimits": [
+    {
+      "name": "RATE_LIMITER_SEARCH",
+      "namespace_id": "1001",
+      "simple": { "limit": 60, "period": 60 }
+    },
+    {
+      "name": "RATE_LIMITER_READ",
+      "namespace_id": "1002",
+      "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "RATE_LIMITER_ADMIN",
+      "namespace_id": "1003",
+      "simple": { "limit": 20, "period": 60 }
+    },
+    {
+      "name": "RATE_LIMITER_UNAUTH",
+      "namespace_id": "1004",
+      "simple": { "limit": 30, "period": 60 }
+    }
+  ]
+}

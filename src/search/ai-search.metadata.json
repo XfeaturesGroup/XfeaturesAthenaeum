@@ -1,0 +1,10 @@
+{
+  "$comment": "Single source of truth for the AI Search instance's custom metadata schema. The Worker imports this to build retrieval filters; scripts/configure-ai-search.mjs pushes the same file to Cloudflare. AI Search allows at most 5 custom attributes per instance, and 'timestamp', 'folder' and 'filename' are reserved built-ins.",
+  "custom_metadata": [
+    { "field_name": "document_id", "data_type": "text" },
+    { "field_name": "classification", "data_type": "text" },
+    { "field_name": "domain", "data_type": "text" },
+    { "field_name": "language", "data_type": "text" },
+    { "field_name": "status", "data_type": "text" }
+  ]
+}

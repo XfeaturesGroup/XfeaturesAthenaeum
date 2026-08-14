@@ -1,0 +1,834 @@
+openapi: 3.1.0
+info:
+  title: Xfeatures Athenaeum API
+  version: "1.0.0"
+  description: >
+    Authenticated retrieval and knowledge service. Structured facts live in D1,
+    documents in R2, semantic retrieval runs through Cloudflare AI Search --
+    callers never touch any of those directly.
+
+
+    **Authentication.** Every route except `/health` and
+    `/.well-known/oauth-protected-resource` requires a bearer token issued by
+    Xfeatures Account:
+
+
+    - a *machine* token (`client_credentials`) for a service application, or
+
+    - a *user* token (Authorization Code + PKCE) for a person signed in through
+      the first-party Developer Access application.
+
+
+    A Cloudflare Access service-token JWT (`Cf-Access-Jwt-Assertion`) is also
+    accepted for infrastructure that sits behind Access instead of holding an
+    Account credential.
+
+
+    **The token proves who is asking; it never carries knowledge permissions.**
+    Those are resolved from Athenaeum's own database against the introspected
+    identity, so a token whose `scope` is manipulated gains nothing.
+
+
+    **Errors.** Every error response uses the same envelope:
+    `{"error": {"code", "message", "request_id"}}`. `code` is a stable string
+    (`UNAUTHENTICATED`, `FORBIDDEN`, `NOT_FOUND`, `INVALID_REQUEST`,
+    `RATE_LIMITED`, `QUOTA_EXCEEDED`, `CONFLICT`, `STALE_VERSION`,
+    `PAYLOAD_TOO_LARGE`, `UNSUPPORTED_MEDIA_TYPE`, `METHOD_NOT_ALLOWED`,
+    `DEPENDENCY_UNAVAILABLE`, `INTERNAL_ERROR`) -- branch on it rather than on
+    the HTTP status. Authorization denials on read paths are reported as
+    `NOT_FOUND`, deliberately: answering `FORBIDDEN` would confirm that a
+    resource you may not see exists.
+
+
+    **Pagination.** List routes take `limit` and `offset` and echo the resolved
+    values back. A page shorter than `limit` is the last page; no total is
+    returned, because counting would cost a second full scan on every request.
+    `GET /v1/admin/roles` is the exception -- it returns the complete role
+    catalogue, which is small and bounded.
+
+
+    **Versioning.** The `/v1` prefix is the compatibility contract. Within it,
+    fields may be added but never removed or repurposed, and `code` values are
+    never renamed. A breaking change ships as `/v2`.
+
+
+    Request and response schemas below mirror the Zod schemas in
+    `src/api/schemas/*` by hand; treat those as the source of truth if the two
+    ever disagree.
+servers:
+  - url: https://xfeatures-athenaeum.xfeatures.workers.dev
+    description: Development
+security:
+  - accountBearer: []
+
+components:
+  responses:
+    Unauthenticated:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Forbidden:
+      description: Authenticated, but not permitted for this resource
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: No such resource, or not visible to this caller
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    RateLimited:
+      description: Rate limit exceeded for this agent/scope
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  securitySchemes:
+    accountBearer:
+      type: http
+      scheme: bearer
+      description: >
+        An Xfeatures Account access token -- either a machine token
+        (`client_credentials`, for a service application) or a user token
+        (Authorization Code + PKCE, for a signed-in person). Athenaeum verifies
+        it by RFC 7662 introspection against Account on every request, then
+        resolves permissions from its own database. See docs/AGENT-INTEGRATION.md.
+    accessJwt:
+      type: apiKey
+      in: header
+      name: Cf-Access-Jwt-Assertion
+      description: >
+        Alternative for infrastructure behind Cloudflare Access rather than
+        holding an Account credential. Minted by Access after service-token
+        verification; the service token's `common_name` must equal the agent key.
+
+  schemas:
+    Classification:
+      type: string
+      enum: [PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED]
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              enum:
+                - UNAUTHENTICATED
+                - FORBIDDEN
+                - NOT_FOUND
+                - INVALID_REQUEST
+                - RATE_LIMITED
+                - CONFLICT
+                - STALE_VERSION
+                - INGESTION_FAILED
+                - DEPENDENCY_UNAVAILABLE
+                - PAYLOAD_TOO_LARGE
+                - UNSUPPORTED_MEDIA_TYPE
+                - METHOD_NOT_ALLOWED
+                - INTERNAL_ERROR
+            message:
+              type: string
+            request_id:
+              type: string
+
+    SearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        domain:
+          type: string
+          enum: [general, support, product, billing, legal, network, infrastructure, security, internal]
+        language:
+          type: string
+          enum: [ru, en]
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 25
+
+    SearchResult:
+      type: object
+      properties:
+        type: { type: string, enum: [document_chunk] }
+        source_id: { type: string }
+        document_id: { type: [string, "null"] }
+        title: { type: string }
+        content: { type: string }
+        section: { type: [string, "null"] }
+        classification: { $ref: "#/components/schemas/Classification" }
+        version: { type: [integer, "null"] }
+        updated_at: { type: [string, "null"] }
+        score: { type: number }
+
+    SearchResponse:
+      type: object
+      properties:
+        request_id: { type: string }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/SearchResult" }
+        reason:
+          type: string
+          enum: [NO_RELIABLE_MATCH]
+
+    Fact:
+      type: object
+      properties:
+        namespace: { type: string }
+        key: { type: string }
+        version: { type: integer }
+        value: {}
+        title: { type: [string, "null"] }
+        description: { type: [string, "null"] }
+        classification: { $ref: "#/components/schemas/Classification" }
+        status: { type: string, enum: [active, deprecated] }
+        validFrom: { type: [string, "null"] }
+        validUntil: { type: [string, "null"] }
+        updatedAt: { type: string }
+        sourceId: { type: [string, "null"] }
+
+    Document:
+      type: object
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        title: { type: string }
+        domain: { type: string }
+        category: { type: [string, "null"] }
+        classification: { $ref: "#/components/schemas/Classification" }
+        language: { type: string }
+        status: { type: string, enum: [draft, pending_review, active, deprecated, archived] }
+        version: { type: integer }
+        updatedAt: { type: string }
+        sourceReference: { type: [string, "null"] }
+
+    FeedbackRequest:
+      type: object
+      required: [source_id, type]
+      properties:
+        source_id: { type: string }
+        source_type: { type: string }
+        type:
+          type: string
+          enum: [incorrect, outdated, missing, irrelevant, conflicting]
+        message: { type: string, maxLength: 2000 }
+
+paths:
+  /health:
+    get:
+      summary: Public liveness check
+      security: []
+      responses:
+        "200":
+          description: Worker is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  status: { type: string, enum: [ok] }
+
+  /v1/knowledge/search:
+    post:
+      summary: Semantic search over the knowledge base (evidence, not a generated answer)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SearchRequest" }
+      responses:
+        "200":
+          description: Search results (possibly empty with a reason)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/facts/{namespace}/{key}:
+    get:
+      summary: Deterministic fact lookup
+      parameters:
+        - { name: namespace, in: path, required: true, schema: { type: string } }
+        - { name: key, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The fact
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  fact: { $ref: "#/components/schemas/Fact" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/facts/{namespace}:
+    get:
+      summary: List facts in a namespace the caller can see
+      parameters:
+        - { name: namespace, in: path, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 } }
+      responses:
+        "200":
+          description: Facts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  facts:
+                    type: array
+                    items: { $ref: "#/components/schemas/Fact" }
+
+  /v1/documents/{id}:
+    get:
+      summary: Get a document's metadata, or its content with ?include=content
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string }, description: document id or slug }
+        - { name: include, in: query, schema: { type: string, enum: [content] } }
+      responses:
+        "200":
+          description: The document
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  document: { $ref: "#/components/schemas/Document" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/products/{code}:
+    get:
+      summary: Deterministic product lookup
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: The product }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/plans/{code}:
+    get:
+      summary: Deterministic plan/price lookup
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: The plan }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/policies/{code}:
+    get:
+      summary: Deterministic policy lookup
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: The policy }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/feedback:
+    post:
+      summary: Submit feedback on a retrieved fact/document (opens a review item, never auto-applies)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeedbackRequest" }
+      responses:
+        "201": { description: Feedback recorded }
+
+  /v1/admin/agents:
+    post:
+      summary: "Admin: register a new agent identity"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent_key, name, environment, auth_mode]
+              properties:
+                agent_key: { type: string }
+                name: { type: string }
+                description: { type: string }
+                environment: { type: string, enum: [development, staging, production] }
+                auth_mode: { type: string, enum: [access, rpc] }
+                roles:
+                  type: array
+                  items: { type: string }
+      responses:
+        "201":
+          description: Agent created. rpc_key (if auth_mode=rpc) is shown exactly once.
+        "403": { $ref: "#/components/responses/Forbidden" }
+    get:
+      summary: "Admin: list agents"
+      responses:
+        "200": { description: Agents }
+
+  /v1/admin/documents:
+    get:
+      summary: "Admin: list documents including drafts"
+      description: >
+        Unlike the public read path, this includes drafts, documents under
+        review and archived ones -- managing them is the point. Still bounded
+        by the caller own classification tiers and domains: a document above
+        the caller clearance never appears, not even as a title.
+      parameters:
+        - { name: domain, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, pending_review, active, deprecated, archived] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: A page of documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  documents:
+                    type: array
+                    items: { $ref: "#/components/schemas/Document" }
+                  limit: { type: integer }
+                  offset: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: "Admin: upload a new document draft (multipart: metadata + file)"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [metadata, file]
+              properties:
+                metadata: { type: string, description: JSON-encoded document metadata }
+                file: { type: string, format: binary }
+      responses:
+        "201": { description: Draft created }
+
+  /v1/admin/documents/{id}/status:
+    patch:
+      summary: "Admin: transition a document's lifecycle status"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [draft, pending_review, active, deprecated, archived] }
+      responses:
+        "200": { description: Updated }
+        "409": { description: Illegal status transition }
+
+  /v1/admin/audit:
+    get:
+      summary: "Admin: read audit events"
+      parameters:
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: Audit events }
+
+  /.well-known/oauth-protected-resource:
+    get:
+      summary: OAuth 2.0 protected resource metadata (RFC 9728)
+      description: >
+        Lets an MCP client discover which authorization server issues tokens
+        this resource accepts, without being told out of band. Unauthenticated
+        by definition. `authorization_servers` is empty when the Account
+        integration is unconfigured -- an honest empty rather than a guess.
+      security: []
+      responses:
+        "200":
+          description: Resource metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resource: { type: string, format: uri }
+                  authorization_servers:
+                    type: array
+                    items: { type: string, format: uri }
+                  bearer_methods_supported:
+                    type: array
+                    items: { type: string }
+
+  /v1/admin/health/dependencies:
+    get:
+      summary: Dependency reachability (operator diagnostics)
+      description: Requires `admin.ingestion`. Deliberately never exposed on the public /health route.
+      responses:
+        "200":
+          description: Per-dependency status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  dependencies:
+                    type: object
+                    additionalProperties: { type: string, enum: [ok, error] }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/facts:
+    post:
+      summary: Create a fact
+      description: >
+        Requires `admin.facts`, plus the ability to read back the
+        namespace and classification being written -- a caller cannot file a
+        fact into a tier it could never see.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFactRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  fact: { $ref: "#/components/schemas/Fact" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: A fact with this namespace and key already exists }
+
+  /v1/admin/facts/{namespace}/{key}:
+    parameters:
+      - { name: namespace, in: path, required: true, schema: { type: string } }
+      - { name: key, in: path, required: true, schema: { type: string } }
+    patch:
+      summary: Update a fact
+      description: >
+        Changing `classification` requires holding BOTH the current and the
+        target tier, so data cannot be laundered into a tier the caller can
+        read. Supports optimistic concurrency via `expected_version`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateFactRequest" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  fact: { $ref: "#/components/schemas/Fact" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: STALE_VERSION -- the fact changed concurrently; re-read and retry }
+    delete:
+      summary: Deprecate a fact
+      description: Soft delete. Requires `admin.facts` and access to the tier the fact sits in.
+      responses:
+        "200": { description: Deprecated }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/facts/{namespace}/{key}/rollback:
+    parameters:
+      - { name: namespace, in: path, required: true, schema: { type: string } }
+      - { name: key, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Restore a prior version of a fact
+      description: >
+        Restores prior content as a NEW version; history is never rewritten.
+        Treated as a reclassification when the target version carries a
+        different tier.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: integer, minimum: 1 }
+      responses:
+        "200": { description: Rolled back }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/documents/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Read a document including drafts and stored content
+      description: >
+        Unlike `GET /v1/documents/{id}`, which only ever exposes ACTIVE
+        documents, this reaches drafts so an editor can open one. Still gated
+        on the domain and classification the caller can read.
+      responses:
+        "200": { description: Document with content }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/documents/{id}/submit-for-review:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Submit a draft for human review
+      description: >
+        Hands the draft to a durable approval workflow. Does NOT publish it --
+        only a reviewer holding `documents.publish` can do that.
+      responses:
+        "202":
+          description: Submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  submission:
+                    type: object
+                    properties:
+                      document_id: { type: string }
+                      workflow_instance_id: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: The document is not in a submittable state }
+
+  /v1/admin/documents/{id}/review-decision:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Approve or reject a document under review
+      description: >
+        Requires `documents.publish` -- an approver is never a weaker identity
+        than a publisher.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approved]
+              properties:
+                approved: { type: boolean }
+                note: { type: string }
+      responses:
+        "200": { description: Decision delivered }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: No pending review for this document }
+
+  /v1/admin/documents/{id}/rollback:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Restore a prior version of a document
+      description: >
+        Restores the target version bytes as a new current version. Because a
+        prior version may carry a different classification, this requires
+        holding both the current and the target tier.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: integer, minimum: 1 }
+      responses:
+        "200": { description: Rolled back }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/agents/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Read one principal, its roles and effective permissions
+      responses:
+        "200": { description: Principal detail }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/agents/{id}/status:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    patch:
+      summary: Enable, disable or revoke a principal
+      description: >
+        Takes effect within the introspection cache window (at most 60s) even
+        though the underlying Account credential stays valid.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [active, disabled, revoked] }
+      responses:
+        "200": { description: Status changed }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/agents/{id}/quota:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    patch:
+      summary: Set a daily quota for a principal
+      description: >
+        An omitted field leaves that dimension unchanged; an explicit `null`
+        clears it back to unlimited. Quotas are opt-in per principal -- an
+        agent with no quota row has no daily ceiling at all.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                max_searches_per_day: { type: [integer, "null"], minimum: 0 }
+                max_writes_per_day: { type: [integer, "null"], minimum: 0 }
+                max_uploads_per_day: { type: [integer, "null"], minimum: 0 }
+      responses:
+        "200": { description: Quota set }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/agents/{id}/roles:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Grant a role to a principal
+      description: >
+        Privilege containment applies: the caller may only grant a role whose
+        every permission it already holds itself, so an administrator cannot
+        mint an identity stronger than its own.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string }
+      responses:
+        "200": { description: Role granted }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { description: FORBIDDEN, including PRIVILEGE_ESCALATION_BLOCKED }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/agents/{id}/roles/{role}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: role, in: path, required: true, schema: { type: string } }
+    delete:
+      summary: Revoke a role from a principal
+      responses:
+        "200": { description: Role revoked }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/roles:
+    get:
+      summary: The complete role catalogue with expanded permissions
+      description: >
+        Unpaginated by design -- the catalogue is small and bounded, and a
+        client needs all of it to render a grant interface.
+      responses:
+        "200":
+          description: Roles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  roles:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        description: { type: [string, "null"] }
+                        permissions:
+                          type: array
+                          items: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/ingestion:
+    get:
+      summary: List ingestion jobs
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200": { description: A page of jobs }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/ingestion/{id}/reindex:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Re-index one document
+      description: Consumes daily write quota.
+      responses:
+        "202": { description: Job enqueued }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { description: RATE_LIMITED or QUOTA_EXCEEDED }
+
+  /v1/admin/ingestion/reindex-all:
+    post:
+      summary: Re-index every active document
+      description: >
+        The most expensive operation this API exposes. Bounded to one page of
+        documents per call, gated on `admin.ingestion`, and consumes daily
+        write quota.
+      responses:
+        "202": { description: Jobs enqueued }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { description: RATE_LIMITED or QUOTA_EXCEEDED }

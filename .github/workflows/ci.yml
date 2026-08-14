@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+# No deployment happens here, so no Cloudflare credentials are needed and none
+# are configured. CI proves the code is correct; releasing it is a separate,
+# deliberate act performed by a human (see docs/PRODUCTION-MIGRATION-PLAN.md).
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck, lint, contract and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: OpenAPI matches the route table
+        run: npm run verify:openapi
+
+      # Runs inside the real workerd runtime via @cloudflare/vitest-pool-workers,
+      # against a Miniflare-backed D1 -- not a mock. 342 tests, the majority of
+      # them security regressions, each verified to fail against the vulnerable
+      # code it covers (docs/SECURITY-REVIEW.md).
+      - name: Tests
+        run: npm test
+
+  packages:
+    name: Client packages build, test and pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Built in dependency order: types <- sdk <- cli, linked by file: refs.
+      - name: Build and test @xfeatures/athenaeum-types
+        working-directory: packages/athenaeum-types
+        run: npm install && npm run build
+
+      - name: Build and test @xfeatures/athenaeum-sdk
+        working-directory: packages/athenaeum-sdk
+        run: npm install && npm run build && npm test
+
+      - name: Build and test @xfeatures/athenaeum-cli
+        working-directory: packages/athenaeum-cli
+        run: npm install && npm run build && npm test
+
+      # Proves what would actually ship, without publishing anything.
+      - name: Pack dry-run
+        run: |
+          for pkg in athenaeum-types athenaeum-sdk athenaeum-cli; do
+            echo "--- $pkg ---"
+            (cd "packages/$pkg" && npm pack --dry-run)
+          done
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Fails the build on a high or critical advisory. Moderate and below are
+      # reported but do not block: this project's dependency surface is small
+      # and deliberately shallow, and blocking on every transitive moderate
+      # would train people to ignore the job.
+      - name: npm audit (high and critical)
+        run: npm audit --audit-level=high
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks needs history to scan commits, not just the worktree.
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

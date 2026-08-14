@@ -1,0 +1,43 @@
+{
+  "name": "knowledge-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Central retrieval/knowledge service for internal AI agents. D1 facts + R2 documents + AI Search retrieval, behind a single authenticated REST/RPC/MCP interface.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "cf-typegen": "wrangler types",
+    "db:migrations:list": "wrangler d1 migrations list DB",
+    "db:migrations:apply:local": "wrangler d1 migrations apply DB --local",
+    "db:migrations:apply:staging": "wrangler d1 migrations apply DB --env staging --remote",
+    "db:migrations:apply:production": "wrangler d1 migrations apply DB --env production --remote",
+    "db:seed:local": "wrangler d1 execute DB --local --file=./seed/dev-seed.sql",
+    "verify:openapi": "node scripts/verify-openapi.mjs",
+    "verify": "npm run typecheck && npm run lint && npm run verify:openapi && npm test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "jose": "^6.2.9",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.21.3",
+    "@cloudflare/workers-types": "^5.20260816.1",
+    "eslint": "^10.8.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.59.3"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20260811.1": true
+  }
+}

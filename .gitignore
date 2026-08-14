@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*.sqlite
+*.sqlite-journal
+.env
+.env.*
+!.env.example
+coverage/
+# Machine-local dev tooling config (absolute paths to sibling repos on this
+# checkout) -- not portable, not meant to be shared.
+.claude/launch.json
+# Local-only end-to-end proof harness (unauthenticated, `wrangler dev --remote`
+# against real dev resources). Never deployed, never committed.
+.e2e-harness/
+worker-configuration.d.ts
+.DS_Store
+Thumbs.db
+# JetBrains project state (absolute local paths, not portable)
+.idea/
+# Claude Code runtime state
+.claude/

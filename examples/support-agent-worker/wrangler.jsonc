@@ -1,0 +1,15 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "support-agent-example",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-14",
+  "services": [
+    {
+      "binding": "KNOWLEDGE_CORE",
+      "service": "knowledge-core",
+      "entrypoint": "KnowledgeCoreRpc"
+    }
+  ]
+  // AGENT_RPC_KEY is a secret: `wrangler secret put AGENT_RPC_KEY`, never
+  // written here. See docs/AGENT-INTEGRATION.md.
+}

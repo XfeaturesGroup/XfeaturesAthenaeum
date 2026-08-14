@@ -1,0 +1,288 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Worker name follows the product (src/branding.ts). The D1/R2/queue resource
+  // names below still carry the original `knowledge-core-*` prefix: renaming
+  // those means recreating the resources and migrating their data, which is a
+  // separate, deliberate operation.
+  "name": "xfeatures-athenaeum",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-14",
+  "observability": {
+    "enabled": true
+  },
+
+  // Default (development/local) bindings. `wrangler dev` uses these. Every
+  // resource ID below is a placeholder -- replace after creating the actual
+  // Cloudflare resources (see README.md "Infrastructure setup"). Bindings are
+  // NOT inherited across `env.*` blocks, so staging/production redeclare them
+  // in full with their own resource IDs.
+  "vars": {
+    "ENVIRONMENT": "development",
+    "DEFAULT_CLASSIFICATION": "INTERNAL",
+    "LOG_CONTENT_DEBUG": false,
+    // Xfeatures Account's RFC 7662 endpoint (ADR 0001). The matching
+    // ACCOUNT_CLIENT_ID / ACCOUNT_CLIENT_SECRET are Worker secrets, never vars.
+    // Development points at the dev Account deployment, which has its own
+    // database and never serves real sign-ins.
+    "ACCOUNT_INTROSPECTION_URL": "https://xfeatures-auth-api-dev.xfeatures.workers.dev/oauth/introspect",
+    // client_id of the single first-party "Athenaeum Developer Access" Account
+    // application a human developer signs into (src/auth/account-token.ts).
+    // Not a secret -- a client_id is public by design in OAuth 2.0 (the
+    // confidentiality boundary is the client_secret, which this app doesn't
+    // even have -- it's a public/PKCE client). Filled in once the application
+    // is provisioned in the dev Account database.
+    "ACCOUNT_DEVELOPER_ACCESS_CLIENT_ID": "xf_e59bfbc9bfa94e7c995283290820aafb"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "knowledge-core-db-dev",
+      "database_id": "1c609bd2-7d9b-479a-8b0e-292ecf1f992c"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "DOCS",
+      "bucket_name": "knowledge-core-documents-dev"
+    }
+  ],
+
+  "ai_search": [
+    {
+      "binding": "AI_SEARCH",
+      "instance_name": "xfeatures-athenaeum",
+      "remote": true
+    }
+  ],
+
+  // Token introspection travels over this binding rather than the public
+  // internet (ADR 0001 §3). Athenaeum is a client of Account here, not a peer:
+  // the binding grants no privilege beyond calling the same HTTP endpoint any
+  // registered resource server could call, still authenticated with the client
+  // credentials below.
+  "services": [
+    {
+      "binding": "ACCOUNT_SERVICE",
+      "service": "xfeatures-auth-api-dev"
+    }
+  ],
+
+  "queues": {
+    "producers": [
+      {
+        "binding": "INGESTION_QUEUE",
+        "queue": "knowledge-core-ingestion-dev"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "knowledge-core-ingestion-dev",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30,
+        "max_retries": 5,
+        "dead_letter_queue": "knowledge-core-ingestion-dlq-dev"
+      },
+      {
+        "queue": "knowledge-core-ingestion-dlq-dev",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30,
+        "max_retries": 1
+      }
+    ]
+  },
+
+  "workflows": [
+    {
+      "binding": "PUBLISH_WORKFLOW",
+      "name": "knowledge-core-publish-dev",
+      "class_name": "PublishWorkflow"
+    }
+  ],
+
+  "ratelimits": [
+    {
+      "name": "RATE_LIMITER_SEARCH",
+      "namespace_id": "1001",
+      "simple": { "limit": 60, "period": 60 }
+    },
+    {
+      "name": "RATE_LIMITER_READ",
+      "namespace_id": "1002",
+      "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "RATE_LIMITER_ADMIN",
+      "namespace_id": "1003",
+      "simple": { "limit": 20, "period": 60 }
+    },
+    {
+      "name": "RATE_LIMITER_UNAUTH",
+      "namespace_id": "1004",
+      "simple": { "limit": 30, "period": 60 }
+    }
+  ],
+
+  "env": {
+    "staging": {
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "DEFAULT_CLASSIFICATION": "INTERNAL",
+        "LOG_CONTENT_DEBUG": false
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "knowledge-core-db-staging",
+          "database_id": "<STAGING_D1_DATABASE_ID>"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "DOCS",
+          "bucket_name": "knowledge-core-documents-staging"
+        }
+      ],
+      "ai_search": [
+        {
+          "binding": "AI_SEARCH",
+          "instance_name": "xfeatures-athenaeum-staging",
+          "remote": true
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "INGESTION_QUEUE",
+            "queue": "knowledge-core-ingestion-staging"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "knowledge-core-ingestion-staging",
+            "max_batch_size": 10,
+            "max_batch_timeout": 30,
+            "max_retries": 5,
+            "dead_letter_queue": "knowledge-core-ingestion-dlq-staging"
+          },
+          {
+            "queue": "knowledge-core-ingestion-dlq-staging",
+            "max_batch_size": 10,
+            "max_batch_timeout": 30,
+            "max_retries": 1
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "PUBLISH_WORKFLOW",
+          "name": "knowledge-core-publish-staging",
+          "class_name": "PublishWorkflow"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMITER_SEARCH",
+          "namespace_id": "2001",
+          "simple": { "limit": 60, "period": 60 }
+        },
+        {
+          "name": "RATE_LIMITER_READ",
+          "namespace_id": "2002",
+          "simple": { "limit": 120, "period": 60 }
+        },
+        {
+          "name": "RATE_LIMITER_ADMIN",
+          "namespace_id": "2003",
+          "simple": { "limit": 20, "period": 60 }
+        },
+        {
+          "name": "RATE_LIMITER_UNAUTH",
+          "namespace_id": "2004",
+          "simple": { "limit": 30, "period": 60 }
+        }
+      ]
+    },
+
+    "production": {
+      "vars": {
+        "ENVIRONMENT": "production",
+        "DEFAULT_CLASSIFICATION": "INTERNAL",
+        "LOG_CONTENT_DEBUG": false
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "knowledge-core-db-production",
+          "database_id": "<PRODUCTION_D1_DATABASE_ID>"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "DOCS",
+          "bucket_name": "knowledge-core-documents-production"
+        }
+      ],
+      "ai_search": [
+        {
+          "binding": "AI_SEARCH",
+          "instance_name": "xfeatures-athenaeum-production",
+          "remote": true
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "INGESTION_QUEUE",
+            "queue": "knowledge-core-ingestion-production"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "knowledge-core-ingestion-production",
+            "max_batch_size": 10,
+            "max_batch_timeout": 30,
+            "max_retries": 5,
+            "dead_letter_queue": "knowledge-core-ingestion-dlq-production"
+          },
+          {
+            "queue": "knowledge-core-ingestion-dlq-production",
+            "max_batch_size": 10,
+            "max_batch_timeout": 30,
+            "max_retries": 1
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "PUBLISH_WORKFLOW",
+          "name": "knowledge-core-publish-production",
+          "class_name": "PublishWorkflow"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMITER_SEARCH",
+          "namespace_id": "3001",
+          "simple": { "limit": 60, "period": 60 }
+        },
+        {
+          "name": "RATE_LIMITER_READ",
+          "namespace_id": "3002",
+          "simple": { "limit": 120, "period": 60 }
+        },
+        {
+          "name": "RATE_LIMITER_ADMIN",
+          "namespace_id": "3003",
+          "simple": { "limit": 20, "period": 60 }
+        },
+        {
+          "name": "RATE_LIMITER_UNAUTH",
+          "namespace_id": "3004",
+          "simple": { "limit": 30, "period": 60 }
+        }
+      ]
+    }
+  }
+}

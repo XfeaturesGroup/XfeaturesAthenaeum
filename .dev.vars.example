@@ -1,0 +1,13 @@
+# Copy to .dev.vars for local `wrangler dev` only. Never commit the real file (.gitignore already excludes it).
+# In staging/production these are set with `wrangler secret put <NAME> --env <environment>`
+# or via Secrets Store bindings -- never written into wrangler.jsonc.
+
+# HMAC key used to hash/verify internal RPC agent keys (see src/auth/rpc-credential.ts).
+# Generate with: openssl rand -base64 32
+RPC_KEY_PEPPER="local-dev-only-pepper-do-not-use-in-production"
+
+# Cloudflare Access team domain and Access Application AUD tag protecting the
+# external REST/MCP hostname, used to verify CF-Access-Jwt-Assertion. Leave
+# unset in local dev to exercise the RPC-credential path instead.
+# ACCESS_TEAM_DOMAIN="https://your-team.cloudflareaccess.com"
+# ACCESS_AUD="replace-with-access-application-aud-tag"
