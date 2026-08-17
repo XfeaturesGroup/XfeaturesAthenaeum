@@ -9,6 +9,7 @@ import { ApiError, ErrorCode, jsonResponse } from "../../../utils/responses";
 import { readJsonBody, readMultipartUpload } from "../../http";
 import {
   createDocumentMetadataSchema,
+  createDocumentVersionMetadataSchema,
   reviewDecisionRequestSchema,
   rollbackRequestSchema,
   transitionDocumentStatusSchema,
@@ -18,8 +19,6 @@ import { buildServices } from "../../services";
 import type { RouteContext } from "../../router";
 
 export async function handleCreateDocumentDraft(request: Request, ctx: RouteContext): Promise<Response> {
-  const { file, metadata } = await readMultipartUpload(request, createDocumentMetadataSchema);
-  validateUploadCandidate({ filename: file.filename, mimeType: file.mimeType, size: file.bytes.byteLength });
   const services = buildServices(ctx.env);
 
   const document = await runAuthenticatedOperation({
@@ -27,11 +26,19 @@ export async function handleCreateDocumentDraft(request: Request, ctx: RouteCont
     requestId: ctx.requestId,
     clientKey: ctx.clientKey,
     authorization: { enforce: { action: "admin.documents" } },
-    resource: { type: "document", id: metadata.slug },
+    // No `resource` here: the slug is inside a body this caller has not yet
+    // earned the right to have parsed.
     authenticate: () => authenticateHttpRequest(request, ctx.env),
     handler: async (principal) => {
       await enforceRateLimit(ctx.env, principal, "admin");
       await enforceQuota(ctx.env, principal, "uploads");
+      // Parsed only after the caller is known. Reading the body first meant an
+      // anonymous request was parsed and validated before anything checked who
+      // sent it, which both spends work on strangers and answers questions
+      // they should have to authenticate to ask -- "File extension not
+      // allowed: .exe" describes the upload policy to whoever asks.
+      const { file, metadata } = await readMultipartUpload(request, createDocumentMetadataSchema);
+      validateUploadCandidate({ filename: file.filename, mimeType: file.mimeType, size: file.bytes.byteLength });
       // May only file a document under a domain/classification it could read back.
       assertCanAccessDocument(principal, metadata.domain, metadata.classification);
 
@@ -61,6 +68,72 @@ export async function handleCreateDocumentDraft(request: Request, ctx: RouteCont
         newValue: { slug: created.slug, domain: created.domain, classification: created.classification }
       });
       return created;
+    }
+  });
+
+  return jsonResponse({ request_id: ctx.requestId, document }, 201);
+}
+
+/**
+ * Edits a document by adding a version.
+ *
+ * Authorized exactly like creating a draft, because it is the same act: new
+ * bytes entering the knowledge base under an existing document's identity. It
+ * costs an upload against the caller's quota for the same reason.
+ *
+ * The caller must state the version it edited (`expected_version`); a
+ * concurrent edit turns that into STALE_VERSION rather than a silent
+ * last-writer-wins overwrite.
+ */
+export async function handleCreateDocumentVersion(request: Request, ctx: RouteContext): Promise<Response> {
+  const documentId = ctx.params["id"] ?? "";
+  const services = buildServices(ctx.env);
+
+  const document = await runAuthenticatedOperation({
+    env: ctx.env,
+    requestId: ctx.requestId,
+    clientKey: ctx.clientKey,
+    authorization: { enforce: { action: "admin.documents" } },
+    resource: { type: "document", id: documentId },
+    authenticate: () => authenticateHttpRequest(request, ctx.env),
+    handler: async (principal) => {
+      await enforceRateLimit(ctx.env, principal, "admin");
+      await enforceQuota(ctx.env, principal, "uploads");
+      // Same ordering as creating a draft: identity first, body second.
+      const { file, metadata } = await readMultipartUpload(request, createDocumentVersionMetadataSchema);
+      validateUploadCandidate({ filename: file.filename, mimeType: file.mimeType, size: file.bytes.byteLength });
+
+      const before = await services.documentsRepo.getById(documentId);
+      if (!before) throw new ApiError(ErrorCode.NOT_FOUND, "Document not found.");
+      // Must be able to read the document it is rewriting, in its own tier and
+      // domain. No reclassification check is needed here and none would mean
+      // anything: an edit inherits the current classification, so the tier the
+      // caller is checked against is the only tier involved.
+      assertCanAccessDocument(principal, before.domain, before.classification);
+
+      const updated = await services.documents.createNewVersion(
+        principal,
+        documentId,
+        {
+          content: file.bytes,
+          contentType: file.mimeType,
+          changeNote: metadata.change_note,
+          title: metadata.title,
+          expectedVersion: metadata.expected_version
+        },
+        principal.agentId
+      );
+
+      await auditChange({
+        env: ctx.env,
+        requestId: ctx.requestId,
+        action: "admin.documents.create_version",
+        principal,
+        resource: { type: "document", id: documentId },
+        oldValue: { version: before.version, title: before.title },
+        newValue: { version: updated.version, title: updated.title, change_note: metadata.change_note ?? null }
+      });
+      return updated;
     }
   });
 
@@ -218,7 +291,7 @@ export async function handleRollbackDocument(request: Request, ctx: RouteContext
       if (!target) throw new ApiError(ErrorCode.NOT_FOUND, "Document version not found.");
       assertCanReclassifyDocument(principal, before.domain, before.classification, target.classification);
 
-      const rolledBack = await services.documents.rollback(principal, documentId, body.version, principal.agentId);
+      const rolledBack = await services.documents.rollback(principal, documentId, body.version, principal.agentId, body.expected_version);
 
       await auditChange({
         env: ctx.env,
@@ -243,6 +316,31 @@ export async function handleRollbackDocument(request: Request, ctx: RouteContext
  * listing at all, and then per-row `documents.read` inside the service, so a
  * document above the caller's classification never appears even as a title.
  */
+/**
+ * A document's version history, so an operator can see what they would be
+ * restoring before they restore it. Read-only; the rollback itself is a
+ * separate, guarded call.
+ */
+export async function handleListDocumentVersions(request: Request, ctx: RouteContext): Promise<Response> {
+  const documentId = ctx.params["id"] ?? "";
+  const services = buildServices(ctx.env);
+
+  const versions = await runAuthenticatedOperation({
+    env: ctx.env,
+    requestId: ctx.requestId,
+    clientKey: ctx.clientKey,
+    authorization: { enforce: { action: "admin.documents" } },
+    resource: { type: "document", id: documentId },
+    authenticate: () => authenticateHttpRequest(request, ctx.env),
+    handler: async (principal) => {
+      await enforceRateLimit(ctx.env, principal, "read");
+      return services.documents.listVersions(principal, documentId);
+    }
+  });
+
+  return jsonResponse({ request_id: ctx.requestId, versions });
+}
+
 export async function handleListDocuments(request: Request, ctx: RouteContext): Promise<Response> {
   const url = new URL(request.url);
   const query = listDocumentsQuerySchema.parse({

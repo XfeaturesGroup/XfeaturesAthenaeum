@@ -10,7 +10,7 @@ import { generateId } from "../utils/ids";
 import { isWithinValidityWindow, nowIso } from "../utils/time";
 import { ApiError, ErrorCode } from "../utils/responses";
 import type { Env } from "../env";
-import type { DocumentContentDTO, DocumentDTO } from "./dto";
+import type { DocumentContentDTO, DocumentDTO, DocumentVersionDTO } from "./dto";
 
 function toDTO(row: DocumentRow): DocumentDTO {
   return {
@@ -271,27 +271,46 @@ export class DocumentsService {
     return toDTO(updated);
   }
 
+  /**
+   * Edits a document by adding a version, never by rewriting one.
+   *
+   * The previous version's bytes stay exactly where they were: the new content
+   * goes to a new R2 key derived from the new version number, and a
+   * `document_versions` row records it. That is what makes rollback possible at
+   * all -- there is something to roll back to.
+   *
+   * `classification` is deliberately not a parameter. The repository layer can
+   * change it, and rollback legitimately does so through
+   * `assertCanReclassifyDocument`. This path has no such guard because it does
+   * not need one: it always inherits the current tier, so editing content can
+   * never move a document between classifications.
+   * `tests/security/privilege-escalation.test.ts` pins that.
+   */
   async createNewVersion(
     principal: Principal,
     documentId: string,
-    content: ArrayBuffer,
-    contentType: string,
-    changeNote: string | undefined,
-    updatedBy: string,
-    expectedVersion: number
+    input: {
+      content: ArrayBuffer;
+      contentType: string;
+      changeNote?: string | undefined;
+      title?: string | undefined;
+      expectedVersion: number;
+    },
+    updatedBy: string
   ): Promise<DocumentDTO> {
     assertAuthorized(principal, { action: "documents.write" });
     const current = await this.repo.getById(documentId);
     if (!current) throw new ApiError(ErrorCode.NOT_FOUND, "Document not found.");
 
-    const contentHash = await hashContent(content);
+    const title = input.title ?? current.title;
+    const contentHash = await hashContent(input.content);
     const nextVersion = current.version + 1;
-    const r2Key = buildDocumentR2Key(current.classification, current.domain, documentId, nextVersion, contentType);
-    await this.storage.put(r2Key, content, contentType, {
+    const r2Key = buildDocumentR2Key(current.classification, current.domain, documentId, nextVersion, input.contentType);
+    await this.storage.put(r2Key, input.content, input.contentType, {
       document_id: documentId,
       classification: current.classification,
       domain: current.domain,
-      title: current.title,
+      title,
       version: String(nextVersion),
       language: current.language,
       status: current.status,
@@ -302,10 +321,20 @@ export class DocumentsService {
       const next = await this.repo.createNewVersion(documentId, {
         r2Key,
         contentHash,
-        changeNote,
+        changeNote: input.changeNote,
+        title,
         updatedBy,
-        expectedVersion
+        expectedVersion: input.expectedVersion
       });
+
+      // A published document's indexed content is now stale: retrieval would
+      // keep answering from the previous version's bytes. Anything not active
+      // is not in the index at all, so there is nothing to correct.
+      if (next.status === "active") {
+        const job = await this.ingestionRepo.create(documentId, "reindex");
+        await this.env.INGESTION_QUEUE.send({ jobId: job.id, documentId, jobType: "reindex" });
+      }
+
       return toDTO(next);
     } catch (error) {
       if (error instanceof StaleVersionError) {
@@ -316,19 +345,71 @@ export class DocumentsService {
   }
 
   /** Restore a prior version's bytes (already immutable in R2) as the new current version. */
-  async rollback(principal: Principal, documentId: string, targetVersion: number, updatedBy: string): Promise<DocumentDTO> {
+  async rollback(
+    principal: Principal,
+    documentId: string,
+    targetVersion: number,
+    updatedBy: string,
+    expectedVersion?: number
+  ): Promise<DocumentDTO> {
     assertAuthorized(principal, { action: "documents.write" });
-    const next = await this.repo.rollbackToVersion(documentId, targetVersion, updatedBy);
-    await this.storage.updateMetadata(next.r2_key, {
-      document_id: next.id,
-      classification: next.classification,
-      domain: next.domain,
-      title: next.title,
-      version: String(next.version),
-      language: next.language,
-      status: next.status,
-      updated_at: next.updated_at
-    });
-    return toDTO(next);
+    try {
+      const next = await this.repo.rollbackToVersion(documentId, targetVersion, updatedBy, expectedVersion);
+      await this.storage.updateMetadata(next.r2_key, {
+        document_id: next.id,
+        classification: next.classification,
+        domain: next.domain,
+        title: next.title,
+        version: String(next.version),
+        language: next.language,
+        status: next.status,
+        updated_at: next.updated_at
+      });
+
+      // Same reason as editing: a published document's indexed content is now
+      // the restored version's, and search would otherwise keep answering from
+      // the bytes that were just rolled away from.
+      if (next.status === "active") {
+        const job = await this.ingestionRepo.create(documentId, "reindex");
+        await this.env.INGESTION_QUEUE.send({ jobId: job.id, documentId, jobType: "reindex" });
+      }
+
+      return toDTO(next);
+    } catch (error) {
+      if (error instanceof StaleVersionError) {
+        throw new ApiError(ErrorCode.STALE_VERSION, error.message);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Version history, so an operator choosing what to roll back to can see what
+   * they are choosing. Read-authorized like the document itself: history
+   * carries titles and classifications, and a caller who may not read the
+   * document may not read its past either.
+   */
+  async listVersions(principal: Principal, documentId: string): Promise<DocumentVersionDTO[]> {
+    assertAuthorized(principal, { action: "admin.documents" });
+    const row = await this.repo.getById(documentId);
+    if (!row) throw new ApiError(ErrorCode.NOT_FOUND, "Document not found.");
+    assertAuthorizedOrNotFound(
+      principal,
+      { action: "documents.read", resource: { domain: row.domain, classification: row.classification } },
+      "Document not found."
+    );
+
+    const versions = await this.repo.listVersions(documentId);
+    return versions.map((version) => ({
+      version: version.version,
+      title: version.title,
+      classification: version.classification,
+      status: version.status,
+      changeNote: version.change_note,
+      contentHash: version.content_hash,
+      createdAt: version.created_at,
+      createdBy: version.created_by,
+      isCurrent: version.version === row.version
+    }));
   }
 }

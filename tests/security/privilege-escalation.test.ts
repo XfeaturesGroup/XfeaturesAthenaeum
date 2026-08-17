@@ -3,6 +3,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { buildServices, type Services } from "../../src/api/services";
 import { assertCanAccessFact, assertCanReclassifyFact, assertCanReclassifyDocument, assertCanGrantRole } from "../../src/auth/resource-guard";
 import ADMIN_DOCUMENTS_SOURCE from "../../src/api/routes/admin/documents.ts?raw";
+import DOCUMENTS_SERVICE_SOURCE from "../../src/knowledge/documents.ts?raw";
+import ADMIN_SCHEMAS_SOURCE from "../../src/api/schemas/admin.ts?raw";
 import { authorize } from "../../src/auth/authorize";
 import { ApiError, ErrorCode } from "../../src/utils/responses";
 import type { Env } from "../../src/env";
@@ -252,5 +254,33 @@ describe("SR-023: document reclassification requires holding both tiers", () => 
     // inline pair, and the inline pair is exactly what drifted. Pin the call.
     const body = ADMIN_DOCUMENTS_SOURCE.split("export async function handleRollbackDocument")[1] ?? "";
     expect(body).toContain("assertCanReclassifyDocument(");
+  });
+
+  /**
+   * Editing reaches DocumentsRepository.createNewVersion, which CAN set
+   * `classification`. The note above used to say that path was unreachable
+   * from any transport; POST /v1/admin/documents/:id/versions makes it
+   * reachable, so the property has to be enforced rather than assumed.
+   *
+   * The service is the chokepoint: it inherits the current tier and never
+   * forwards a caller-supplied classification. If that ever changes, editing
+   * silently becomes an unguarded reclassification -- the exact shape of
+   * SR-023, with no assertCanReclassifyDocument anywhere near it.
+   */
+  it("editing cannot reclassify: the service never forwards a classification", () => {
+    const body = DOCUMENTS_SERVICE_SOURCE.split("async createNewVersion(")[1]?.split("\n  async ")[0] ?? "";
+    expect(body).not.toMatch(/classification:\s*(input|metadata|params)\./);
+    // The repository call inside it must not pass classification at all.
+    const repoCall = body.split("this.repo.createNewVersion(")[1]?.split("});")[0] ?? "";
+    expect(repoCall).not.toContain("classification");
+  });
+
+  it("the edit route does not accept a classification field", () => {
+    const schema = ADMIN_SCHEMAS_SOURCE.split("createDocumentVersionMetadataSchema")[1]?.split("});")[0] ?? "";
+    expect(schema).not.toContain("classification");
+    expect(schema).not.toContain("domain");
+    // Optimistic concurrency is the point of the schema; losing it turns a
+    // concurrent edit into a silent overwrite.
+    expect(schema).toContain("expected_version");
   });
 });

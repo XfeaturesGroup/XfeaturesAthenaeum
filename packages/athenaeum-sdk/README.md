@@ -6,7 +6,7 @@ Thin REST client for Xfeatures Athenaeum. No dependencies beyond the platform `f
 import { AthenaeumClient } from "@xfeatures/athenaeum-sdk";
 
 const athenaeum = new AthenaeumClient({
-  baseUrl: "https://xfeatures-athenaeum.xfeatures.workers.dev",
+  baseUrl: "https://athenaeum.xfeatures.net",
   token: accountAccessToken // any Xfeatures Account bearer token Athenaeum accepts -- see docs/AGENT-INTEGRATION.md
 });
 

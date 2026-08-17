@@ -120,6 +120,9 @@ describe("SR-022: every mutating admin route consumes daily quota", () => {
   const READ_ONLY = new Set([
     "handleListDocuments",
     "handleGetDocumentForAdmin",
+    // Reads a document's version history. No writes, no storage cost beyond a
+    // single indexed D1 query, and rate-limited like any other read.
+    "handleListDocumentVersions",
     "handleListIngestionJobs",
     "handleListAuditEvents",
     "handleListAgents",

@@ -15,6 +15,8 @@ import {
   handleCreateDocumentDraft,
   handleListDocuments,
   handleGetDocumentForAdmin,
+  handleCreateDocumentVersion,
+  handleListDocumentVersions,
   handleReviewDecision,
   handleRollbackDocument,
   handleSubmitForReview,
@@ -61,6 +63,8 @@ export function buildRouter(): Router {
   router.get("/v1/admin/documents", handleListDocuments);
   router.get("/v1/admin/documents/:id", handleGetDocumentForAdmin);
   router.post("/v1/admin/documents", handleCreateDocumentDraft);
+  router.get("/v1/admin/documents/:id/versions", handleListDocumentVersions);
+  router.post("/v1/admin/documents/:id/versions", handleCreateDocumentVersion);
   router.patch("/v1/admin/documents/:id/status", handleTransitionDocumentStatus);
   router.post("/v1/admin/documents/:id/submit-for-review", handleSubmitForReview);
   router.post("/v1/admin/documents/:id/review-decision", handleReviewDecision);

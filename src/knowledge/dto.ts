@@ -35,6 +35,23 @@ export interface DocumentContentDTO extends DocumentDTO {
   contentType: string;
 }
 
+/**
+ * One entry in a document's history. Deliberately carries no R2 key: an
+ * operator picking a version to restore needs to recognise it, not to be handed
+ * a storage path they could fetch around the authorization layer with.
+ */
+export interface DocumentVersionDTO {
+  version: number;
+  title: string;
+  classification: Classification;
+  status: string;
+  changeNote: string | null;
+  contentHash: string;
+  createdAt: string;
+  createdBy: string | null;
+  isCurrent: boolean;
+}
+
 export interface ProductDTO {
   code: string;
   name: string;

@@ -56,7 +56,7 @@ info:
     `src/api/schemas/*` by hand; treat those as the source of truth if the two
     ever disagree.
 servers:
-  - url: https://xfeatures-athenaeum.xfeatures.workers.dev
+  - url: https://athenaeum.xfeatures.net
     description: Development
 security:
   - accountBearer: []
@@ -576,9 +576,26 @@ paths:
               type: object
               required: [version]
               properties:
-                version: { type: integer, minimum: 1 }
+                version:
+                  type: integer
+                  minimum: 1
+                  description: The version to restore.
+                expected_version:
+                  type: integer
+                  minimum: 1
+                  description: >
+                    The version the caller believed was current when it chose a
+                    target. Optional, but supplying it turns a concurrent change
+                    into `STALE_VERSION` instead of restoring over it.
       responses:
         "200": { description: Rolled back }
+        "409":
+          description: >
+            STALE_VERSION -- the document changed since `expected_version` was
+            read.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -647,6 +664,100 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: No pending review for this document }
+
+  /v1/admin/documents/{id}/versions:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      summary: List a document's version history
+      description: >
+        Newest first. Carries the title, classification, status, change note,
+        content hash, author and timestamp of every version, and marks which one
+        is current -- enough to choose what to restore without guessing.
+
+
+        No R2 keys are returned. History is bounded by the same clearance as the
+        document itself: a caller who may not read the document is answered
+        `NOT_FOUND`, so its existence is not disclosed.
+      responses:
+        "200":
+          description: Version history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  versions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        version: { type: integer }
+                        title: { type: string }
+                        classification: { type: string, enum: [PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED] }
+                        status: { type: string }
+                        changeNote: { type: string, nullable: true }
+                        contentHash: { type: string }
+                        createdAt: { type: string, format: date-time }
+                        createdBy: { type: string, nullable: true }
+                        isCurrent: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Edit a document by adding a version
+      description: >
+        Replaces a document's content by writing a NEW version. The previous
+        version's bytes stay at their own R2 key and its `document_versions` row
+        is untouched, which is what makes rollback possible.
+
+
+        `expected_version` is required. If the document has moved on since the
+        caller read it, the edit is refused with `STALE_VERSION` rather than
+        overwriting the other editor's work.
+
+
+        Classification and domain cannot be set here: an edit always inherits
+        them. Moving a document between tiers is reclassification and goes
+        through the rollback path, which checks that the caller holds both the
+        current and the target tier.
+
+
+        Publishing is unaffected -- an edit leaves the document in whatever
+        status it already had. Editing a published document re-indexes it.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, metadata]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The new content.
+                metadata:
+                  type: string
+                  description: >
+                    JSON object. `expected_version` (integer, required) is the
+                    version the caller edited. `title` (string, optional)
+                    renames the document. `change_note` (string, optional) is
+                    recorded in version history.
+      responses:
+        "201": { description: New version created }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >
+            STALE_VERSION -- the document changed since `expected_version` was
+            read. Re-read it and reapply the edit.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
 
   /v1/admin/documents/{id}/rollback:
     parameters:

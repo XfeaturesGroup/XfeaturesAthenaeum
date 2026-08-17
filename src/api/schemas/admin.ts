@@ -44,7 +44,30 @@ export const reviewDecisionRequestSchema = z.object({
 });
 
 export const rollbackRequestSchema = z.object({
-  version: z.number().int().min(1)
+  version: z.number().int().min(1),
+  /**
+   * The version the operator saw as current when they chose a target. Optional
+   * for compatibility with existing callers, but the console always sends it:
+   * picking "restore v2" from a list that has since moved on should fail, not
+   * quietly roll back over somebody else's work.
+   */
+  expected_version: z.number().int().min(1).optional()
+});
+
+/**
+ * Metadata accompanying an edit. `expected_version` is required rather than
+ * optional: two editors who loaded the same document must not silently
+ * overwrite each other, and the only way to detect that is to make every
+ * caller state which version it believes it is editing.
+ *
+ * `classification` and `domain` are absent by design -- an edit inherits both.
+ * Moving a document between tiers goes through the reclassification guard, not
+ * through here.
+ */
+export const createDocumentVersionMetadataSchema = z.object({
+  expected_version: z.coerce.number().int().min(1),
+  title: z.string().min(1).max(LIMITS.TITLE_MAX_LENGTH).optional(),
+  change_note: z.string().max(LIMITS.DESCRIPTION_MAX_LENGTH).optional()
 });
 
 export const createAgentRequestSchema = z

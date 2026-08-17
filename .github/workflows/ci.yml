@@ -99,7 +99,22 @@ jobs:
         with:
           # gitleaks needs history to scan commits, not just the worktree.
           fetch-depth: 0
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Run gitleaks directly rather than through the action.
+      #
+      # The action derives a commit range from the push event, and on the first
+      # push that range is `<initial-commit>^..<head>` -- a revision that does
+      # not exist, because the initial commit has no parent. git errors, the
+      # scan covers ~0 bytes, and the job fails for a reason that has nothing to
+      # do with secrets. A scan that silently examines nothing is worse than no
+      # scan at all, so this scans the whole history every time and says how
+      # much it looked at.
+      - name: Install gitleaks
+        run: |
+          VERSION=8.24.3
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+      - name: Scan full history
+        run: gitleaks detect --source . --config .gitleaks.toml --redact --verbose --exit-code 1
+      - name: Scan the working tree
+        run: gitleaks detect --source . --no-git --config .gitleaks.toml --redact --verbose --exit-code 1

@@ -1,0 +1,31 @@
+# Extends the default rules rather than replacing them, so a new rule shipped by
+# gitleaks applies here without anyone remembering to add it.
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+Two categories of deliberate non-secret.
+
+OAuth client identifiers. A client_id names an application; it does not
+authenticate one (RFC 6749 2.2), and the confidentiality boundary is the
+client_secret -- which the Developer Access application does not even have,
+being a public/PKCE client (RFC 8252). They are high-entropy strings, so the
+generic-api-key rule fires on them. Matched by the specific keys that hold a
+client_id, so a real secret assigned nearby is still caught.
+
+Local-development placeholders. .dev.vars.example is the committed template
+whose values say in the value itself that they are not real, and it exists so
+nobody has to invent one. The real .dev.vars is gitignored and has never been
+committed.
+"""
+regexTarget = "line"
+paths = [
+  '''^\.dev\.vars\.example$'''
+]
+regexes = [
+  '''(ACCOUNT_DEVELOPER_ACCESS_CLIENT_ID|ATHENAEUM_CLIENT_ID|OAUTH_CLIENT_ID|DEFAULT_CLIENT_ID|clientId)''',
+  '''totally-made-up-secret''',
+  '''local-dev-only-pepper-do-not-use-in-production''',
+  '''x-no-login'''
+]

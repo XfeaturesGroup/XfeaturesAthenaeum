@@ -206,16 +206,40 @@
     },
 
     "production": {
+      // `routes` IS inherited into named environments while bindings are not,
+      // so production's hostname is declared here and nowhere else -- nothing
+      // at the top level may claim it.
+      "routes": [{ "pattern": "athenaeum.xfeatures.net", "custom_domain": true }],
+      // One canonical production hostname. The protected-resource metadata
+      // (RFC 9728) reports whichever origin the request arrived on, so a second
+      // reachable hostname would hand MCP clients a second, equally valid
+      // resource identity for the same service. workers.dev and per-version
+      // preview URLs are both off for that reason.
+      "workers_dev": false,
+      "preview_urls": false,
       "vars": {
         "ENVIRONMENT": "production",
         "DEFAULT_CLASSIFICATION": "INTERNAL",
-        "LOG_CONTENT_DEBUG": false
+        "LOG_CONTENT_DEBUG": false,
+        // Production Account. A separate deployment from dev with its own
+        // database, so a dev credential cannot authenticate here.
+        "ACCOUNT_INTROSPECTION_URL": "https://auth.xfeatures.net/oauth/introspect",
+        // Filled in once the production "Athenaeum Developer Access"
+        // application exists. A client_id is public by design; this one is a
+        // public/PKCE client and has no secret at all.
+        "ACCOUNT_DEVELOPER_ACCESS_CLIENT_ID": "xf_c2c41345139f4acd91bf95ced0f3004e"
       },
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "knowledge-core-db-production",
-          "database_id": "<PRODUCTION_D1_DATABASE_ID>"
+          "database_id": "95823555-2fd6-45c6-b2d4-45df6dd7f5cb"
+        }
+      ],
+      "services": [
+        {
+          "binding": "ACCOUNT_SERVICE",
+          "service": "xfeatures-auth-api"
         }
       ],
       "r2_buckets": [

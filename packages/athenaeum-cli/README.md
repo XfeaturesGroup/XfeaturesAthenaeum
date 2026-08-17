@@ -28,7 +28,7 @@ Whether your Account identity can actually reach Athenaeum, and with which role,
 | `ATHENAEUM_CLIENT_ID` | yes | — |
 | `ATHENAEUM_ACCOUNT_WEB_URL` | no | `https://account.xfeatures.net` |
 | `ATHENAEUM_ACCOUNT_API_URL` | no | `https://api.account.xfeatures.net` |
-| `ATHENAEUM_BASE_URL` | no | `https://xfeatures-athenaeum.xfeatures.workers.dev` |
+| `ATHENAEUM_BASE_URL` | no | `https://athenaeum.xfeatures.net` |
 | `ATHENAEUM_REDIRECT_URI` | no | `http://localhost:8765/callback` |
 
 `ATHENAEUM_CLIENT_ID` identifies the *application*, not you — get it from whoever administers the Athenaeum Developer Access application in your environment. A `client_id` is public by design in OAuth 2.0: it names the client, it does not authenticate it. Every other command (`search`, `whoami`, ...) only needs the token already saved by `login`, so it is only required once, at sign-in.

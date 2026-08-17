@@ -273,9 +273,19 @@ export class DocumentsRepository {
    * row back at that r2_key under a fresh version number. No new R2 write,
    * no history rewritten; document_versions gains one more append-only row.
    */
-  async rollbackToVersion(documentId: string, targetVersion: number, updatedBy: string): Promise<DocumentRow> {
+  async rollbackToVersion(
+    documentId: string,
+    targetVersion: number,
+    updatedBy: string,
+    expectedVersion?: number
+  ): Promise<DocumentRow> {
     const current = await this.getById(documentId);
     if (!current) throw new Error(`Document not found: ${documentId}`);
+    // Same guard as editing: an operator choosing a version from a list they
+    // loaded a minute ago must not silently discard whatever landed since.
+    if (expectedVersion !== undefined && expectedVersion !== current.version) {
+      throw new StaleVersionError(`document:${documentId}`, expectedVersion, current.version);
+    }
     const target = await this.getVersion(documentId, targetVersion);
     if (!target) throw new Error(`Document version not found: ${documentId} v${String(targetVersion)}`);
 
