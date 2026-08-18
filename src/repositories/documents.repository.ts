@@ -89,6 +89,11 @@ export class DocumentsRepository {
       conditions.push(`status = ?${params.length + 1}`);
       params.push(options.status);
     }
+    // A caller asking for "documents" is not asking for deleted ones. The trash
+    // is a separate listing (listTrashed), never a value of this filter -- a
+    // trashed document is stored as `archived`, so filtering by status alone
+    // would quietly include it.
+    conditions.push("trashed_at IS NULL");
     if (options.classifications && options.classifications.length > 0) {
       const placeholders = options.classifications.map((_, i) => `?${params.length + 1 + i}`).join(",");
       conditions.push(`classification IN (${placeholders})`);
@@ -124,6 +129,10 @@ export class DocumentsRepository {
       source_reference: input.sourceReference ?? null,
       valid_from: input.validFrom ?? null,
       valid_until: input.validUntil ?? null,
+      // A new document is not in the trash, and the table's CHECK requires both
+      // columns to be absent whenever the status is not `trashed`.
+      trashed_at: null,
+      status_before_trash: null,
       created_at: now,
       updated_at: now,
       created_by: input.createdBy,
@@ -243,11 +252,145 @@ export class DocumentsRepository {
    * responsible for enforcing which transitions are legal for which role --
    * this method only persists the new status.
    */
+  /**
+   * Ordinary lifecycle transitions.
+   *
+   * Refuses to touch a document that is in the trash: it has a pending deletion
+   * and a recorded state to return to, and a bare status update would silently
+   * discard one or both. Trash is entered and left through moveToTrash and
+   * restoreFromTrash, which maintain those columns together.
+   */
   async setStatus(id: string, status: DocumentStatus, updatedBy: string): Promise<void> {
-    await this.db
-      .prepare("UPDATE documents SET status = ?1, updated_at = ?2, updated_by = ?3 WHERE id = ?4")
+    const result = await this.db
+      .prepare("UPDATE documents SET status = ?1, updated_at = ?2, updated_by = ?3 WHERE id = ?4 AND trashed_at IS NULL")
       .bind(status, nowIso(), updatedBy, id)
       .run();
+    if (result.meta.changes === 0) {
+      const existing = await this.getById(id);
+      if (existing?.trashed_at) {
+        throw new Error("This document is in the trash. Restore it before changing its status.");
+      }
+    }
+  }
+
+  /**
+   * Moves a document to the trash, recording when and what to come back to.
+   *
+   * `status_before_trash = status` reads the row's existing value -- every
+   * assignment in a SQL UPDATE is evaluated against the pre-update row -- so
+   * this captures the state being left behind in the same statement that
+   * leaves it, with no window where the two disagree.
+   *
+   * The `status <> 'trashed'` guard makes a second call a no-op rather than
+   * resetting the retention window, so trashing something twice cannot extend
+   * how long it survives.
+   */
+  async moveToTrash(id: string, updatedBy: string): Promise<DocumentRow | null> {
+    const now = nowIso();
+    // `status_before_trash = status` reads the row's existing value: every
+    // assignment in a SQL UPDATE evaluates against the pre-update row. So the
+    // state being left behind is captured in the same statement that leaves it,
+    // with no window where the two disagree.
+    //
+    // `archived` is not a euphemism here -- it is the terminal state no read
+    // path returns, which is what makes the document unavailable immediately.
+    // `trashed_at` is what distinguishes "archived" from "archived and going".
+    const row = await this.db
+      .prepare(
+        `UPDATE documents
+            SET status_before_trash = status, status = 'archived',
+                trashed_at = ?1, updated_at = ?1, updated_by = ?2
+          WHERE id = ?3 AND trashed_at IS NULL
+        RETURNING *`
+      )
+      .bind(now, updatedBy, id)
+      .first<DocumentRow>();
+    return row ?? null;
+  }
+
+  /** Returns a trashed document to the exact state it was in before. */
+  async restoreFromTrash(id: string, updatedBy: string): Promise<DocumentRow | null> {
+    const row = await this.db
+      .prepare(
+        `UPDATE documents
+            SET status = COALESCE(status_before_trash, status), status_before_trash = NULL, trashed_at = NULL,
+                updated_at = ?1, updated_by = ?2
+          WHERE id = ?3 AND trashed_at IS NOT NULL
+        RETURNING *`
+      )
+      .bind(nowIso(), updatedBy, id)
+      .first<DocumentRow>();
+    return row ?? null;
+  }
+
+  /** The trash, bounded by the caller's readable classifications. */
+  async listTrashed(options: { classifications: readonly string[]; limit: number; offset: number }): Promise<DocumentRow[]> {
+    const placeholders = options.classifications.map((_, i) => `?${i + 1}`).join(",");
+    const { results } = await this.db
+      .prepare(
+        `SELECT * FROM documents
+          WHERE trashed_at IS NOT NULL AND classification IN (${placeholders})
+          ORDER BY trashed_at DESC
+          LIMIT ?${options.classifications.length + 1} OFFSET ?${options.classifications.length + 2}`
+      )
+      .bind(...options.classifications, options.limit, options.offset)
+      .all<DocumentRow>();
+    return results;
+  }
+
+  /**
+   * Trashed documents whose retention window has closed.
+   *
+   * Bounded per run: a purge that tries to clear an unbounded backlog in one
+   * scheduled invocation is a purge that times out and clears nothing.
+   */
+  async findPurgeable(cutoffIso: string, limit: number): Promise<DocumentRow[]> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT * FROM documents
+          WHERE trashed_at IS NOT NULL AND trashed_at <= ?1
+          ORDER BY trashed_at ASC LIMIT ?2`
+      )
+      .bind(cutoffIso, limit)
+      .all<DocumentRow>();
+    return results;
+  }
+
+  /** Every R2 key this document has ever occupied, current version included. */
+  async allR2Keys(documentId: string): Promise<string[]> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT r2_key FROM document_versions WHERE document_id = ?1
+         UNION
+         SELECT r2_key FROM documents WHERE id = ?1`
+      )
+      .bind(documentId)
+      .all<{ r2_key: string }>();
+    return results.map((r) => r.r2_key);
+  }
+
+  /**
+   * Removes a purged document's operational records.
+   *
+   * `document_versions` disappears with it (ON DELETE CASCADE). The other two
+   * references have no cascade and would otherwise abort the delete:
+   * `ingestion_jobs` rows are operational and go; `policies.document_id` is
+   * detached rather than deleted, because a policy is a separate piece of
+   * knowledge that merely cited this document -- purging the document is not a
+   * reason to destroy the policy.
+   *
+   * Audit events are untouched. `audit_events.resource_id` is a plain column
+   * with no foreign key, so the trail keeps pointing at the id after the row is
+   * gone, which is exactly what an audit trail is for. No tombstone is needed
+   * to preserve it, and none is written: a tombstone would be a row about a
+   * document that was deleted on request.
+   */
+  async purgeDocument(documentId: string): Promise<void> {
+    await this.db.batch([
+      this.db.prepare("UPDATE policies SET document_id = NULL WHERE document_id = ?1").bind(documentId),
+      this.db.prepare("DELETE FROM ingestion_jobs WHERE document_id = ?1").bind(documentId),
+      this.db.prepare("DELETE FROM documents WHERE id = ?1").bind(documentId)
+    ]);
   }
 
   /** Bounded: version history grows without limit over a document's lifetime. */

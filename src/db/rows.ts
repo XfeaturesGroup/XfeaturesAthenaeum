@@ -63,7 +63,18 @@ export interface FactRow {
   updated_by: string | null;
 }
 
+/**
+ * What the database stores. A trashed document is `archived` with a
+ * `trashed_at` -- see migration 0003 for why that is two columns rather than a
+ * sixth status. Callers see `trashed`; see DocumentStatusView.
+ */
 export type DocumentStatus = "draft" | "pending_review" | "active" | "deprecated" | "archived";
+
+/**
+ * What the API reports. `trashed` is derived from `trashed_at` rather than
+ * stored, so nothing can be in the trash without a deletion time attached.
+ */
+export type DocumentStatusView = DocumentStatus | "trashed";
 
 export interface DocumentRow {
   id: string;
@@ -81,6 +92,10 @@ export interface DocumentRow {
   source_reference: string | null;
   valid_from: string | null;
   valid_until: string | null;
+  /** ISO timestamp the document entered the trash; NULL unless `status` is `trashed`. */
+  trashed_at: string | null;
+  /** The state a restore returns it to. Recorded when trashed, because it cannot be inferred later. */
+  status_before_trash: DocumentStatus | null;
   created_at: string;
   updated_at: string;
   created_by: string | null;

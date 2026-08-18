@@ -15,6 +15,15 @@ export const LIMITS = {
   SEARCH_RESULTS_MAX: 25,
   SEARCH_MIN_CONFIDENCE_DEFAULT: 0.4,
 
+  /**
+   * How long a trashed document can be restored before it is purged.
+   *
+   * One number, read by the API that reports remaining time, by the purge
+   * job that enforces it, and by the tests that pin both -- so "72 hours"
+   * cannot come to mean two different things in two places.
+   */
+  TRASH_RETENTION_HOURS: 72,
+
   PAGINATION_DEFAULT: 20,
   PAGINATION_MAX: 100,
 

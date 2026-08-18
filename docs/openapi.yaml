@@ -759,6 +759,110 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /v1/admin/trash:
+    get:
+      summary: List trashed documents and how long each has left
+      description: >
+        Documents that have been moved to the trash but not yet purged, newest
+        first. Each entry reports when it was trashed, the state a restore would
+        return it to, when it becomes eligible for purge, and the minutes
+        remaining — computed server-side so no client has to reimplement the
+        retention arithmetic.
+
+
+        Bounded by the caller's own clearance exactly like any other listing: a
+        document does not become visible to someone new by being deleted.
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        "200":
+          description: The trash
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  retention_hours:
+                    type: integer
+                    description: The retention window, in hours.
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        slug: { type: string }
+                        title: { type: string }
+                        classification: { type: string, enum: [PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED] }
+                        trashedAt: { type: string, format: date-time }
+                        statusBeforeTrash:
+                          type: string
+                          description: The state a restore returns it to.
+                        purgeableAt: { type: string, format: date-time }
+                        minutesRemaining: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/documents/{id}/trash:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Move a document to the trash
+      description: >
+        Removes the document from every retrieval surface immediately — REST,
+        MCP and search all filter on status, and a trashed document is not
+        active — and starts the retention window. A published document is also
+        removed from the index, so search stops answering from content that is
+        no longer meant to exist.
+
+
+        Requires `documents.publish`, not `documents.write`: taking something
+        out of the knowledge base changes what every consumer can read, which is
+        the same authority as putting it in.
+
+
+        This is the only deletion the API offers. There is no endpoint that
+        removes a document immediately; content is destroyed exclusively by the
+        scheduled purge, once the retention window has closed.
+      responses:
+        "200": { description: Moved to the trash }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Already in the trash.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/admin/documents/{id}/restore:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Restore a document from the trash
+      description: >
+        Returns the document to exactly the state it was in when it was trashed
+        — a draft comes back a draft, an archived document comes back archived.
+        Restoring is not publishing, and cannot be used to skip review.
+
+
+        Only possible while the retention window is open; once purged there is
+        nothing to restore.
+      responses:
+        "200": { description: Restored }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Not in the trash.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /v1/admin/documents/{id}/rollback:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string } }

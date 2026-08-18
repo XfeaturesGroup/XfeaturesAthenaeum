@@ -17,6 +17,9 @@ import {
   handleGetDocumentForAdmin,
   handleCreateDocumentVersion,
   handleListDocumentVersions,
+  handleTrashDocument,
+  handleRestoreDocument,
+  handleListTrash,
   handleReviewDecision,
   handleRollbackDocument,
   handleSubmitForReview,
@@ -64,6 +67,11 @@ export function buildRouter(): Router {
   router.get("/v1/admin/documents/:id", handleGetDocumentForAdmin);
   router.post("/v1/admin/documents", handleCreateDocumentDraft);
   router.get("/v1/admin/documents/:id/versions", handleListDocumentVersions);
+  // Deliberately not under /v1/admin/documents/: a literal segment there
+  // would be shadowed by the :id route depending on registration order.
+  router.get("/v1/admin/trash", handleListTrash);
+  router.post("/v1/admin/documents/:id/trash", handleTrashDocument);
+  router.post("/v1/admin/documents/:id/restore", handleRestoreDocument);
   router.post("/v1/admin/documents/:id/versions", handleCreateDocumentVersion);
   router.patch("/v1/admin/documents/:id/status", handleTransitionDocumentStatus);
   router.post("/v1/admin/documents/:id/submit-for-review", handleSubmitForReview);
