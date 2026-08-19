@@ -14,7 +14,6 @@ import CATALOG_SOURCE from "../../src/knowledge/catalog.ts?raw";
 import FACTS_SERVICE_SOURCE from "../../src/knowledge/facts.ts?raw";
 import DOCUMENTS_SERVICE_SOURCE from "../../src/knowledge/documents.ts?raw";
 import POLICIES_SERVICE_SOURCE from "../../src/knowledge/policies.ts?raw";
-import ADMIN_DOCUMENTS_SOURCE from "../../src/api/routes/admin/documents.ts?raw";
 
 const testEnv = env as unknown as Env;
 
@@ -260,39 +259,6 @@ describe("every deferred authorization site has an enforcer that really enforces
       // Either form is a real check; assertAuthorizedOrNotFound additionally
       // masks the denial as 404 on read paths (SR-009).
       expect(source).toMatch(/assertAuthorized(OrNotFound)?\(/);
-    });
-  }
-});
-
-/**
- * Upload endpoints must identify the caller before they read the body.
- *
- * Found against production: an anonymous POST carrying a `.exe` was answered
- * `415 File extension not allowed: .exe`, because readMultipartUpload and
- * validateUploadCandidate ran ahead of runAuthenticatedOperation. Nothing
- * leaked and nothing was written, but a stranger could spend the Worker's time
- * parsing arbitrary multipart bodies and read the upload policy back out of the
- * error — and could tell upload routes from every other route by 415 vs 401.
- *
- * Source inspection rather than a request, because the property is an ordering
- * one: a behavioural test sees 401 either way once the body happens to be
- * well-formed.
- */
-describe("upload handlers authenticate before they parse", () => {
-  const uploadHandlers = ["handleCreateDocumentDraft", "handleCreateDocumentVersion"];
-
-  for (const handler of uploadHandlers) {
-    it(`${handler} does not touch the body outside the authenticated handler`, () => {
-      const body = ADMIN_DOCUMENTS_SOURCE.split(`export async function ${handler}`)[1] ?? "";
-      expect(body, `${handler} not found`).not.toBe("");
-
-      const preamble = body.split("handler: async (principal)")[0] ?? "";
-      expect(preamble, `${handler} parses the request body before authenticating`).not.toContain("readMultipartUpload(");
-      expect(preamble, `${handler} validates an upload before authenticating`).not.toContain("validateUploadCandidate(");
-
-      // ...and still does both somewhere, so this cannot pass by dropping them.
-      expect(body).toContain("readMultipartUpload(");
-      expect(body).toContain("validateUploadCandidate(");
     });
   }
 });

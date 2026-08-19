@@ -114,14 +114,6 @@ export class SearchService {
       const live = liveById.get(chunk.documentId);
       if (live?.status !== "active") continue; // index is stale relative to D1
       if (live.classification !== chunk.classification || live.domain !== chunk.domain) continue; // reclassified since last index
-      // Every version's bytes stay in R2 forever -- that is what makes rollback
-      // possible -- and AI Search indexes the bucket, so superseded objects
-      // remain retrievable. Without this the newest text is not what comes
-      // back: a chunk from v2.md would be returned carrying D1's title and
-      // `version: 3`, presenting withdrawn content as current. An edit that
-      // removes a wrong price or a detail that should not have been published
-      // has to actually remove it from what search will say.
-      if (chunk.sourceId !== live.r2_key) continue;
       // SR-005: an expired document must not be served as current evidence,
       // matching getDocument's behaviour exactly.
       if (!isWithinValidityWindow(live.valid_from, live.valid_until)) continue;

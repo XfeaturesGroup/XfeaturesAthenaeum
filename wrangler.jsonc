@@ -16,14 +16,6 @@
   // Cloudflare resources (see README.md "Infrastructure setup"). Bindings are
   // NOT inherited across `env.*` blocks, so staging/production redeclare them
   // in full with their own resource IDs.
-  // Trash retention is enforced on a schedule, not on a request: "purged after
-  // 72 hours" must hold whether or not anyone opens HQ. Hourly is frequent
-  // enough that the window is honoured closely and cheap enough to be dull --
-  // each run clears a bounded batch and does nothing when the trash is empty.
-  "triggers": {
-    "crons": ["0 * * * *"]
-  },
-
   "vars": {
     "ENVIRONMENT": "development",
     "DEFAULT_CLASSIFICATION": "INTERNAL",
@@ -225,9 +217,6 @@
       // preview URLs are both off for that reason.
       "workers_dev": false,
       "preview_urls": false,
-      "triggers": {
-        "crons": ["0 * * * *"]
-      },
       "vars": {
         "ENVIRONMENT": "production",
         "DEFAULT_CLASSIFICATION": "INTERNAL",

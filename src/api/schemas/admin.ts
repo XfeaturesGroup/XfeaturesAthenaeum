@@ -44,14 +44,7 @@ export const reviewDecisionRequestSchema = z.object({
 });
 
 export const rollbackRequestSchema = z.object({
-  version: z.number().int().min(1),
-  /**
-   * The version the operator saw as current when they chose a target. Optional
-   * for compatibility with existing callers, but the console always sends it:
-   * picking "restore v2" from a list that has since moved on should fail, not
-   * quietly roll back over somebody else's work.
-   */
-  expected_version: z.number().int().min(1).optional()
+  version: z.number().int().min(1)
 });
 
 /**

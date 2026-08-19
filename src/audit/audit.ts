@@ -25,43 +25,6 @@ async function safeRecord(env: Env, fields: Parameters<AuditRepository["record"]
   }
 }
 
-/**
- * Records something the platform did on its own initiative.
- *
- * Every other helper here demands a Principal, because every other action is
- * taken by somebody. Scheduled maintenance has no principal and must not
- * borrow one -- attributing an automatic purge to whichever operator last
- * touched the document would put a person's name on something they did not do.
- * `actor_agent_id` stays NULL and `actor_identity_raw` says what ran.
- */
-export async function auditSystemAction(
-  env: Env,
-  fields: {
-    requestId: string;
-    actor: string;
-    action: string;
-    reason?: string;
-    resourceType?: string;
-    resourceId?: string;
-    oldValue?: Record<string, unknown> | null;
-    newValue?: Record<string, unknown> | null;
-  }
-): Promise<void> {
-  await safeRecord(env, {
-    requestId: fields.requestId,
-    actorAgentId: null,
-    actorIdentityRaw: fields.actor,
-    action: fields.action,
-    decision: "ALLOW",
-    reason: fields.reason ?? null,
-    resourceType: fields.resourceType ?? null,
-    resourceId: fields.resourceId ?? null,
-    oldValue: fields.oldValue ?? null,
-    newValue: fields.newValue ?? null,
-    status: "success"
-  });
-}
-
 export async function auditAllow(fields: BaseAuditFields & { principal: Principal }): Promise<void> {
   await safeRecord(fields.env, {
     requestId: fields.requestId,

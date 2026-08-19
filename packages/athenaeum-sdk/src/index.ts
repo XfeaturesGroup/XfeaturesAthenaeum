@@ -51,7 +51,7 @@ export class AthenaeumApiError extends Error {
 }
 
 export interface AthenaeumClientOptions {
-  /** e.g. "https://athenaeum.xfeatures.net" -- no trailing slash. */
+  /** e.g. "https://xfeatures-athenaeum.xfeatures.workers.dev" -- no trailing slash. */
   baseUrl: string;
   /**
    * A bearer token: an Xfeatures Account access token (client_credentials for

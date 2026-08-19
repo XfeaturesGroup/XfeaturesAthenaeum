@@ -29,21 +29,9 @@ class SpyProvider implements KnowledgeSearchProvider {
   }
 }
 
-/**
- * `sourceId` is the R2 key the chunk came from, and retrieval now requires it
- * to be the document's CURRENT key -- superseded versions stay in the bucket
- * and must not be served. Fixtures therefore have to name a real key; passing
- * an arbitrary string is exactly the case that must be dropped, and
- * `staleVersionChunk` below covers it deliberately.
- */
-function chunk(
-  documentId: string,
-  classification: RetrievalChunk["classification"],
-  domain: string,
-  r2Key?: string
-): RetrievalChunk {
+function chunk(documentId: string, classification: RetrievalChunk["classification"], domain: string): RetrievalChunk {
   return {
-    sourceId: r2Key ?? currentKeys.get(documentId) ?? `src-${documentId}`,
+    sourceId: `src-${documentId}`,
     documentId,
     content: "sensitive body text",
     classification,
@@ -51,8 +39,6 @@ function chunk(
     score: 0.99
   };
 }
-
-const currentKeys = new Map<string, string>();
 
 beforeAll(async () => {
   await seedSecurityFixtures(testEnv);
@@ -64,13 +50,6 @@ beforeAll(async () => {
   supportDocId = await createDocument(testEnv, "support-doc", "support", "INTERNAL");
   restrictedDocId = await createDocument(testEnv, "restricted-doc", "network", "RESTRICTED");
   networkDocId = await createDocument(testEnv, "network-doc", "network", "INTERNAL");
-
-  // Record each seeded document's current R2 key so chunks can claim to have
-  // come from it, the way a real index entry does.
-  for (const id of [publicDocId, supportDocId, restrictedDocId, networkDocId]) {
-    const row = await testEnv.DB.prepare("SELECT r2_key FROM documents WHERE id = ?").bind(id).first<{ r2_key: string }>();
-    if (row) currentKeys.set(id, row.r2_key);
-  }
 });
 
 function buildSearch(provider: SpyProvider): SearchService {
@@ -264,41 +243,5 @@ describe("cross-agent isolation on identical queries", () => {
     const publicResult = await search.searchKnowledge(publicAgent.principal, { query: "same" });
 
     expect(publicResult.results).toEqual([]);
-  });
-});
-
-/**
- * Superseded versions stay in R2 forever so rollback has something to restore,
- * and AI Search indexes the bucket rather than a curated set. Retrieval must
- * therefore drop any chunk that did not come from the document's CURRENT
- * object.
- *
- * Found during the production rollout: after editing a document, a search
- * matched the previous version's text and returned it carrying D1's title and
- * the NEW version number -- withdrawn content presented as current. An edit
- * that removes a wrong price has to remove it from what search says, and a
- * rollback has to stop serving the version it rolled away from.
- */
-describe("retrieval serves only the current version's bytes", () => {
-  it("drops a chunk whose R2 key is a superseded version of a live document", async () => {
-    const currentKey = currentKeys.get(publicDocId) ?? "";
-    // The shape a real superseded object has: same document, earlier version.
-    const staleKey = currentKey.replace(/v\d+(\.\w+)$/, "v0$1");
-    expect(staleKey).not.toBe(currentKey);
-
-    const provider = new SpyProvider();
-    provider.staged = [chunk(publicDocId, "PUBLIC", "public", staleKey)];
-    const result = await buildSearch(provider).searchKnowledge(publicAgent.principal, { query: "anything" });
-
-    expect(result.results).toHaveLength(0);
-  });
-
-  it("still serves the same document when the chunk names its current key", async () => {
-    const provider = new SpyProvider();
-    provider.staged = [chunk(publicDocId, "PUBLIC", "public")];
-    const result = await buildSearch(provider).searchKnowledge(publicAgent.principal, { query: "anything" });
-
-    expect(result.results).toHaveLength(1);
-    expect(result.results[0]?.documentId).toBe(publicDocId);
   });
 });

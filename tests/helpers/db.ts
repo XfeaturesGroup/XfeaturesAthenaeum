@@ -7,9 +7,8 @@
 // run against a schema that production does not have.
 import migration0001 from "../../migrations/0001_init.sql?raw";
 import migration0002 from "../../migrations/0002_account_identity_link.sql?raw";
-import migration0003 from "../../migrations/0003_document_trash.sql?raw";
 
-const MIGRATIONS: readonly string[] = [migration0001, migration0002, migration0003];
+const MIGRATIONS: readonly string[] = [migration0001, migration0002];
 
 /**
  * D1's `db.exec()` parses its input close to line-by-line and chokes on
@@ -32,7 +31,7 @@ export async function applySchema(db: D1Database): Promise<void> {
   for (const migration of MIGRATIONS) {
     const statements = splitStatements(migration);
     // PRAGMA statements are not meaningful inside a D1 batch and the table
-    // rebuilds in 0002 and 0003 do not need them here (the batch is already atomic).
+    // rebuild in 0002 does not need them here (the batch is already atomic).
     const executable = statements.filter((statement) => !/^PRAGMA\b/i.test(statement));
     await db.batch(executable.map((statement) => db.prepare(statement)));
   }

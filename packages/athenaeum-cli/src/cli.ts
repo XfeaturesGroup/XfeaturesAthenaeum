@@ -26,7 +26,7 @@ Environment (only needed for "login"; see README.md):
                                                  (a public client -- there is no secret to configure)
   ATHENAEUM_ACCOUNT_WEB_URL                      default https://account.xfeatures.net
   ATHENAEUM_ACCOUNT_API_URL                      default https://api.account.xfeatures.net
-  ATHENAEUM_BASE_URL                             default https://athenaeum.xfeatures.net
+  ATHENAEUM_BASE_URL                             default https://xfeatures-athenaeum.xfeatures.workers.dev
 `;
 
 
