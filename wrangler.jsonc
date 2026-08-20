@@ -33,6 +33,12 @@
     // Development points at the dev Account deployment, which has its own
     // database and never serves real sign-ins.
     "ACCOUNT_INTROSPECTION_URL": "https://xfeatures-auth-api-dev.xfeatures.workers.dev/oauth/introspect",
+    // The authorization server's issuer identifier, advertised verbatim to MCP
+    // clients in /.well-known/oauth-protected-resource (RFC 9728) and matched
+    // by them against the `issuer` in that server's own RFC 8414 document.
+    // Explicit rather than derived from the introspection URL above: the two
+    // are different contracts and, in production, different hostnames.
+    "ACCOUNT_ISSUER": "https://xfeatures-auth-api-dev.xfeatures.workers.dev",
     // client_id of the single first-party "Athenaeum Developer Access" Account
     // application a human developer signs into (src/auth/account-token.ts).
     // Not a secret -- a client_id is public by design in OAuth 2.0 (the
@@ -235,6 +241,11 @@
         // Production Account. A separate deployment from dev with its own
         // database, so a dev credential cannot authenticate here.
         "ACCOUNT_INTROSPECTION_URL": "https://auth.xfeatures.net/oauth/introspect",
+        // One canonical OAuth identity for Xfeatures Account. The Worker
+        // answers on both auth.xfeatures.net and api.account.xfeatures.net;
+        // only this one is advertised, and its metadata document reports the
+        // same string back, so a client's issuer check passes.
+        "ACCOUNT_ISSUER": "https://api.account.xfeatures.net",
         // Filled in once the production "Athenaeum Developer Access"
         // application exists. A client_id is public by design; this one is a
         // public/PKCE client and has no secret at all.

@@ -40,6 +40,24 @@ export interface Env {
   ACCOUNT_CLIENT_ID?: string;
   ACCOUNT_CLIENT_SECRET?: string;
   /**
+   * The authorization server's issuer identifier, exactly as it appears in
+   * that server's own RFC 8414 metadata document -- advertised to MCP clients
+   * in `/.well-known/oauth-protected-resource` (RFC 9728).
+   *
+   * Explicit, and deliberately NOT derived from ACCOUNT_INTROSPECTION_URL.
+   * Introspection is an internal, client-authenticated call between two
+   * Workers and may live on any hostname the deployment finds convenient; the
+   * issuer is a public identity a third-party client fetches metadata from and
+   * validates byte-for-byte against what that document says (RFC 8414 §3.3).
+   * Inferring one from the other sent clients to an origin that serves no
+   * metadata, and coupled a discovery contract to a private routing detail.
+   *
+   * Unset means "no authorization server is discoverable here", which is
+   * honest for an environment without the Account integration -- never a
+   * guess.
+   */
+  ACCOUNT_ISSUER?: string;
+  /**
    * Optional Service Binding to Xfeatures Account. When present, introspection
    * is dispatched over it instead of the public internet: the request never
    * leaves Cloudflare's network, so it cannot be observed or intercepted in

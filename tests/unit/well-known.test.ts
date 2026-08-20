@@ -18,22 +18,59 @@ function ctxFor(request: Request, envOverrides: Partial<Env> = {}): RouteContext
 }
 
 describe("RFC 9728 protected-resource metadata", () => {
-  it("describes this resource and points at Account as the authorization server", async () => {
+  it("describes this resource and points at the configured authorization-server issuer", async () => {
     const request = new Request("https://athenaeum.test/.well-known/oauth-protected-resource");
     const response = await handleProtectedResourceMetadata(
       request,
-      ctxFor(request, { ACCOUNT_INTROSPECTION_URL: "https://auth.example.com/oauth/introspect" })
+      ctxFor(request, { ACCOUNT_ISSUER: "https://issuer.example.com" })
     );
-    const body = await response.json<{ resource: string; authorization_servers: string[]; bearer_methods_supported: string[] }>();
+    const body = await response.json<{
+      resource: string;
+      authorization_servers: string[];
+      bearer_methods_supported: string[];
+      scopes_supported: string[];
+    }>();
 
     expect(body.resource).toBe("https://athenaeum.test");
-    expect(body.authorization_servers).toEqual(["https://auth.example.com"]);
+    expect(body.authorization_servers).toEqual(["https://issuer.example.com"]);
     expect(body.bearer_methods_supported).toEqual(["header"]);
+    // What a generic MCP client should ask the authorization server for. The
+    // Developer Access application grants exactly these; requesting more would
+    // be silently dropped at consent and confuse the operator.
+    expect(body.scopes_supported).toEqual(["openid", "profile:username", "email"]);
   });
 
-  it("reports no authorization server when the Account integration is unconfigured, rather than a stale/guessed URL", async () => {
+  /**
+   * The issuer is NOT derived from the introspection endpoint.
+   *
+   * Introspection is an internal, client-authenticated call between two
+   * Workers; the issuer is a public identity a third-party client validates
+   * against the metadata it fetches (RFC 8414 §3.3). They are allowed to live
+   * on different hostnames, and here they do: introspection travels to
+   * `auth.xfeatures.net`, while the advertised issuer is the canonical OAuth
+   * identity `api.account.xfeatures.net`. Inferring one from the other sent
+   * MCP clients to an origin whose metadata document does not exist.
+   */
+  it("does not infer the issuer from the introspection URL", async () => {
     const request = new Request("https://athenaeum.test/.well-known/oauth-protected-resource");
-    const response = await handleProtectedResourceMetadata(request, ctxFor(request, { ACCOUNT_INTROSPECTION_URL: undefined }));
+    const response = await handleProtectedResourceMetadata(
+      request,
+      ctxFor(request, {
+        ACCOUNT_ISSUER: "https://issuer.example.com",
+        ACCOUNT_INTROSPECTION_URL: "https://internal-introspection.example.net/oauth/introspect"
+      })
+    );
+    const body = await response.json<{ authorization_servers: string[] }>();
+
+    expect(body.authorization_servers).toEqual(["https://issuer.example.com"]);
+  });
+
+  it("reports no authorization server when the issuer is unconfigured, rather than a stale/guessed URL", async () => {
+    const request = new Request("https://athenaeum.test/.well-known/oauth-protected-resource");
+    const response = await handleProtectedResourceMetadata(
+      request,
+      ctxFor(request, { ACCOUNT_ISSUER: undefined, ACCOUNT_INTROSPECTION_URL: "https://auth.example.com/oauth/introspect" })
+    );
     const body = await response.json<{ authorization_servers: string[] }>();
 
     expect(body.authorization_servers).toEqual([]);

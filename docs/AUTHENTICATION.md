@@ -42,8 +42,13 @@ application, no matter who owns it, still needs the scope.
 
 ## Discovery
 
-Athenaeum publishes RFC 9728 protected-resource metadata, so a client can find its
-authorization server without being told:
+Athenaeum is a **resource server**. It hosts no `/authorize`, issues no tokens,
+and proxies neither — it publishes RFC 9728 metadata naming the authorization
+server, and a client continues from there. A generic MCP client walks the chain
+in five steps, with no out-of-band configuration beyond a client_id:
+
+**1. Ask Athenaeum who protects it.** An unauthenticated `/mcp` request answers
+`401` with `WWW-Authenticate: Bearer resource_metadata="…"`, pointing here:
 
 ```bash
 curl https://athenaeum.xfeatures.net/.well-known/oauth-protected-resource
@@ -52,10 +57,44 @@ curl https://athenaeum.xfeatures.net/.well-known/oauth-protected-resource
 ```json
 {
   "resource": "https://athenaeum.xfeatures.net",
-  "authorization_servers": ["https://auth.xfeatures.net"],
-  "bearer_methods_supported": ["header"]
+  "authorization_servers": ["https://api.account.xfeatures.net"],
+  "bearer_methods_supported": ["header"],
+  "scopes_supported": ["openid", "profile:username", "email"]
 }
 ```
+
+**2. Read the issuer.** `authorization_servers[0]` is an explicitly configured
+issuer identifier (`ACCOUNT_ISSUER`), not an inference from whichever hostname
+Athenaeum happens to introspect tokens against. Those are different contracts
+and, in production, different hostnames.
+
+**3. Fetch that issuer's own RFC 8414 metadata.**
+
+```bash
+curl https://api.account.xfeatures.net/.well-known/oauth-authorization-server
+```
+
+```json
+{
+  "issuer": "https://api.account.xfeatures.net",
+  "authorization_endpoint": "https://account.xfeatures.net/oauth/authorize",
+  "token_endpoint": "https://api.account.xfeatures.net/oauth/token",
+  "code_challenge_methods_supported": ["S256"],
+  "token_endpoint_auth_methods_supported": ["none", "client_secret_post", "client_secret_basic"]
+}
+```
+
+The `issuer` here must equal the string in step 2 byte for byte — a client is
+required to check that (RFC 8414 §3.3), and Account reports the same canonical
+issuer on both of its hostnames so the check passes either way.
+
+**4. Send the person to the authorization endpoint** — a page in the Account web
+app, on a different origin from the issuer, which is allowed and deliberate:
+signing in is a browser experience, issuing tokens is an API.
+
+**5. Redeem the code at the token endpoint** with the PKCE verifier and no
+client secret. There is no `registration_endpoint`: Dynamic Client Registration
+is not supported, so a client uses the client_id it was configured with.
 
 ## Presenting a token
 
