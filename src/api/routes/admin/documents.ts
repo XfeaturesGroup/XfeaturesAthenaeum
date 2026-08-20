@@ -27,7 +27,11 @@ export async function handleCreateDocumentDraft(request: Request, ctx: RouteCont
     env: ctx.env,
     requestId: ctx.requestId,
     clientKey: ctx.clientKey,
-    authorization: { enforce: { action: "admin.documents" } },
+    // `documents.draft`, not `admin.documents` (SR-025): filing a new document
+    // is the proposing agent's whole job, while `admin.documents` is the
+    // administrative reach that lists and opens everybody else's. A role that
+    // needs the first must not have to be given the second.
+    authorization: { enforce: { action: "documents.draft" } },
     // No `resource` here: the slug is inside a body this caller has not yet
     // earned the right to have parsed.
     authenticate: () => authenticateHttpRequest(request, ctx.env),
@@ -201,7 +205,7 @@ export async function handleSubmitForReview(request: Request, ctx: RouteContext)
     env: ctx.env,
     requestId: ctx.requestId,
     clientKey: ctx.clientKey,
-    authorization: { enforce: { action: "documents.write" } },
+    authorization: { enforce: { action: "documents.draft" } },
     resource: { type: "document", id: documentId },
     authenticate: () => authenticateHttpRequest(request, ctx.env),
     handler: async (principal) => {

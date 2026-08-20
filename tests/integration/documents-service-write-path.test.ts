@@ -97,7 +97,7 @@ describe("DocumentsService write path (human-in-the-loop publish)", () => {
     ).rejects.toMatchObject({ code: ErrorCode.CONFLICT });
   });
 
-  it("an agent without documents.write cannot draft a document", async () => {
+  it("an agent without documents.draft cannot draft a document", async () => {
     const reader = await createAgent(testEnv, "write-path-reader-1", "support-agent");
     const service = buildService();
 
@@ -118,7 +118,7 @@ describe("DocumentsService write path (human-in-the-loop publish)", () => {
     ).rejects.toMatchObject({ code: ErrorCode.FORBIDDEN });
   });
 
-  it("an agent without documents.write cannot submit someone else's draft for review", async () => {
+  it("an agent without documents.draft cannot submit someone else's draft for review", async () => {
     const contributor = await createAgent(testEnv, "write-path-contributor-3", "content-contributor");
     const reader = await createAgent(testEnv, "write-path-reader-2", "support-agent");
     const service = buildService();
@@ -235,7 +235,7 @@ describe("DocumentsService.createNewVersion (editing)", () => {
   }
 
   async function seedDraft(slug: string, contributorKey: string) {
-    const contributor = await createAgent(testEnv, contributorKey, "content-contributor");
+    const contributor = await createAgent(testEnv, contributorKey, "document-editor");
     const service = buildService();
     const draft = await service.createDraft(
       contributor.principal,
@@ -334,7 +334,7 @@ describe("DocumentsService.createNewVersion (editing)", () => {
   });
 
   it("editing an unknown document is NOT_FOUND", async () => {
-    const contributor = await createAgent(testEnv, "edit-contributor-5", "content-contributor");
+    const contributor = await createAgent(testEnv, "edit-contributor-5", "document-editor");
     const service = buildService();
     await expect(
       service.createNewVersion(
@@ -556,11 +556,11 @@ describe("version history is bounded by the same clearance as the document", () 
       admin.principal.agentId
     );
 
-    // A content-contributor HOLDS admin.documents, so it gets past the
+    // A document-editor HOLDS admin.documents, so it gets past the
     // administrative gate and reaches the per-document check. That is the
     // interesting case: the denial must be masked as NOT_FOUND rather than
     // FORBIDDEN, or the response confirms a RESTRICTED document exists.
-    const limited = await createAgent(testEnv, "vh-reader-1", "content-contributor");
+    const limited = await createAgent(testEnv, "vh-reader-1", "document-editor");
     await expect(service.listVersions(limited.principal, draft.id)).rejects.toMatchObject({
       code: ErrorCode.FORBIDDEN,
       publicCode: ErrorCode.NOT_FOUND

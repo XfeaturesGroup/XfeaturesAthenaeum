@@ -106,14 +106,27 @@ Tools exposed:
 | Tool | Requires | Does |
 |---|---|---|
 | `knowledge_search`, `knowledge_get_fact`, `knowledge_get_document`, `knowledge_get_product`, `knowledge_get_plan`, `knowledge_get_policy`, `knowledge_get_incident` | the matching read permission | Retrieval, read-only. |
-| `knowledge_propose_document` | `documents.write` + `admin.documents` | Creates a **draft** document. Never visible to search or `knowledge_get_document` until a human publishes it. |
-| `knowledge_submit_document_for_review` | `documents.write` | Hands a draft to the durable publish-approval Workflow. Does **not** publish it. |
+| `knowledge_propose_document` | `documents.draft` | Creates a **draft** document. Never visible to search or `knowledge_get_document` until a human publishes it. |
+| `knowledge_submit_document_for_review` | `documents.draft` | Hands a draft to the durable publish-approval Workflow. Does **not** publish it. |
 
 ### Human-in-the-loop publish
 
 MCP has no tool that can publish, approve a review, or otherwise finalize anything — not because the calling agent lacks permission, but because the capability does not exist on this transport at all (`tests/security/transport-parity.test.ts` pins this by inspecting the source: no `documents.publish`, no review-decision handling, no direct Workflow access anywhere in `src/mcp/server.ts`). An agent connected over MCP, however privileged, can propose and submit — a human, working in HQ with `documents.publish`, is the only path to `active`.
 
-The `content-contributor` role (`seed/dev-seed.sql`) is the intended role for an agent that proposes documentation: search, read PUBLIC/INTERNAL documents, `documents.write`, `admin.documents` — deliberately no `documents.publish`.
+The `content-contributor` role (`seed/dev-seed.sql`) is the intended role for an
+agent that proposes documentation: search, read PUBLIC/INTERNAL documents, and
+`documents.draft` — deliberately no `documents.publish`, and since SR-025
+deliberately no `documents.write` or `admin.documents` either.
+
+That last part matters more than it looks. A role belongs to a credential, not
+to a transport: the same token this agent uses over MCP also works against REST
+and the SDK, where `documents.write` would let it rewrite any INTERNAL document
+in any domain and `admin.documents` would let it enumerate and open the whole
+corpus. The MCP tool list is a description of what an agent can conveniently do,
+never a boundary on what its credential can do. `documents.draft` is the
+permission that matches the capability: bring new content in, hand it to a
+human, nothing else. Revising documents that already exist stays with
+`documents.write`, held by `document-editor` and `knowledge-admin`.
 
 Example client configurations live in the [MCP repository](https://github.com/XfeaturesGroup/XfeaturesAthenaeumMCP/tree/main/examples/clients) — note the token is referenced by *name*, never inlined:
 

@@ -6,6 +6,15 @@ import type { AuthzResult, Principal } from "./types";
 export type GlobalAction =
   | "knowledge.search"
   | "facts.write"
+  /**
+   * Filing a NEW document and submitting it for human review. Deliberately
+   * separate from `documents.write` (SR-025): proposing knowledge and revising
+   * knowledge that already exists are different acts with different blast
+   * radii, and the identity that proposes -- typically an AI agent over MCP --
+   * should not inherit the power to rewrite the corpus just because both were
+   * once called "write". Every role that may revise also holds this.
+   */
+  | "documents.draft"
   | "documents.write"
   | "documents.publish"
   | "products.read"

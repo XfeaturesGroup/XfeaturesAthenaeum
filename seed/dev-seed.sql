@@ -35,7 +35,8 @@ INSERT INTO permissions (id, key, description) VALUES
   ('perm_documents_read_incidents', 'documents.read.incidents', 'Read documents in the incidents domain'),
   ('perm_documents_read_internal', 'documents.read.internal', 'Read documents in the generic internal domain'),
   ('perm_documents_read_all', 'documents.read.*', 'Read documents in any domain (still classification-gated)'),
-  ('perm_documents_write', 'documents.write', 'Create/update document drafts'),
+  ('perm_documents_draft', 'documents.draft', 'File a NEW document as a draft and submit it for human review'),
+  ('perm_documents_write', 'documents.write', 'Revise an existing document (add a version, roll back)'),
   ('perm_documents_publish', 'documents.publish', 'Publish/archive documents'),
 
   ('perm_products_read', 'products.read', 'Deterministic product lookups'),
@@ -123,8 +124,12 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
   ('role_content_contributor', 'perm_class_public'),
   ('role_content_contributor', 'perm_class_internal'),
   ('role_content_contributor', 'perm_documents_read_all'),
-  ('role_content_contributor', 'perm_documents_write'),
-  ('role_content_contributor', 'perm_admin_documents'),
+  -- SR-025: draft-only. `documents.write` would let this identity rewrite
+  -- every INTERNAL document in every domain over REST, and `admin.documents`
+  -- would let it enumerate and open the whole corpus -- neither of which the
+  -- MCP tools it was built for can even ask for. The MCP tool list is not a
+  -- security boundary; the permission set is.
+  ('role_content_contributor', 'perm_documents_draft'),
   ('role_content_contributor', 'perm_feedback_submit'),
 
   -- A knowledge administrator manages documents, so it also searches them:
@@ -133,6 +138,7 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
   ('role_knowledge_admin', 'perm_class_all'),
   ('role_knowledge_admin', 'perm_documents_read_all'),
   ('role_knowledge_admin', 'perm_facts_read_all'),
+  ('role_knowledge_admin', 'perm_documents_draft'),
   ('role_knowledge_admin', 'perm_documents_write'),
   ('role_knowledge_admin', 'perm_documents_publish'),
   ('role_knowledge_admin', 'perm_facts_write'),

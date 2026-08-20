@@ -199,13 +199,18 @@ function buildServer(env: Env, principal: Principal, requestId: string, services
       return auditedToolCall(env, requestId, principal, "documents.propose_draft", { type: "document", id: args.slug }, async () => {
         await enforceRateLimit(env, principal, "admin");
         await enforceQuota(env, principal, "uploads");
-        // Mirrors the REST admin route exactly (cross-transport
-        // parity): admin.documents to reach draft creation at all,
-        // documents.write inside DocumentsService.createDraft, and the same
+        // Mirrors the REST admin route exactly (cross-transport parity):
+        // documents.draft to reach draft creation at all, the same
+        // documents.draft inside DocumentsService.createDraft, and the same
         // "could this principal ever read back what it is about to file"
         // guard so an agent cannot stash a document under a
         // domain/classification it could never itself see.
-        assertAuthorized(principal, { action: "admin.documents" });
+        //
+        // SR-025: this used to require admin.documents, which meant the role
+        // handed to a proposing agent carried the whole administrative
+        // document surface on every OTHER transport. The permission a tool
+        // needs is now the permission the role gets.
+        assertAuthorized(principal, { action: "documents.draft" });
         assertCanAccessDocument(principal, args.domain, args.classification);
 
         const bytes = new TextEncoder().encode(args.content);

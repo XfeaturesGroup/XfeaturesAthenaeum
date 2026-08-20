@@ -173,8 +173,17 @@ export class DocumentsService {
 
   // --- Admin / publish lifecycle -----------------------------------------
 
+  /**
+   * Files a new document as a draft.
+   *
+   * Gated on `documents.draft`, not `documents.write` (SR-025). A proposing
+   * agent needs to bring new content in; it does not need to rewrite content
+   * that is already there, and conflating the two made the MCP tool list the
+   * only thing standing between a contributor credential and the whole
+   * INTERNAL corpus over REST.
+   */
   async createDraft(principal: Principal, input: CreateDocumentDraftInput, createdBy: string): Promise<DocumentDTO> {
-    assertAuthorized(principal, { action: "documents.write" });
+    assertAuthorized(principal, { action: "documents.draft" });
     const existing = await this.repo.getBySlug(input.slug);
     if (existing) throw new ApiError(ErrorCode.CONFLICT, "A document with this slug already exists.");
 
@@ -222,7 +231,11 @@ export class DocumentsService {
     documentId: string,
     submittedByAgentId: string
   ): Promise<{ documentId: string; workflowInstanceId: string }> {
-    assertAuthorized(principal, { action: "documents.write" });
+    // The other half of proposing: handing the draft to a human. Gated on the
+    // same `documents.draft` as creating it, since an identity that may
+    // propose but may not ask for review could only ever produce drafts
+    // nobody sees.
+    assertAuthorized(principal, { action: "documents.draft" });
     const document = await this.repo.getById(documentId);
     if (!document) throw new ApiError(ErrorCode.NOT_FOUND, "Document not found.");
     assertAuthorizedOrNotFound(

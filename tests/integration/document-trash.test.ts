@@ -250,7 +250,7 @@ describe("trash is bounded by clearance like everything else", () => {
         slug: "trash-restricted",
         title: "Restricted",
         // `network` + RESTRICTED: the admin fixture holds both, the
-        // content-contributor holds neither, which is the difference under test.
+        // document-editor holds neither, which is the difference under test.
         domain: "network",
         classification: "RESTRICTED",
         language: "en",
@@ -263,7 +263,7 @@ describe("trash is bounded by clearance like everything else", () => {
     await service.moveToTrash(admin.principal, draft.id, admin.principal.agentId);
 
     // Holds admin.documents but not the RESTRICTED tier.
-    const limited = await createAgent(testEnv, "trash-limited-1", "content-contributor");
+    const limited = await createAgent(testEnv, "trash-limited-1", "document-editor");
     const trash = await service.listTrash(limited.principal, { limit: 100, offset: 0 });
     expect(trash.map((d) => d.id)).not.toContain(draft.id);
 

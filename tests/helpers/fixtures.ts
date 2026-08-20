@@ -18,6 +18,7 @@ const PERMISSIONS = [
   "documents.read.public",
   "documents.read.support",
   "documents.read.network",
+  "documents.draft",
   "documents.write",
   "documents.publish",
   "facts.read.products",
@@ -53,13 +54,29 @@ export const ROLE_FIXTURES = {
   // Holds administrative fact rights but NOT high classifications -- the
   // exact shape that made SR-002/SR-003 exploitable.
   "limited-fact-admin": ["admin.facts", "knowledge.classification.PUBLIC", "facts.read.products"],
-  // Can draft and submit for review, but deliberately lacks documents.publish
-  // -- the permission-level half of human-in-the-loop publish.
+  // Proposes knowledge and hands it to a human. Deliberately lacks
+  // documents.publish (the permission-level half of human-in-the-loop
+  // publish) and, since SR-025, also lacks documents.write and
+  // admin.documents: it may bring new content in, never rewrite content that
+  // is already there, and never enumerate or open the corpus administratively.
   "content-contributor": [
     "knowledge.search",
     "knowledge.classification.PUBLIC",
     "knowledge.classification.INTERNAL",
     "documents.read.public",
+    "documents.draft"
+  ],
+  // Revises existing documents: everything the contributor has, plus the
+  // administrative reach and documents.write. Holds PUBLIC/INTERNAL only, so
+  // it is still the "administrative permission without the clearance" shape
+  // that SR-002/SR-003 turned on.
+  "document-editor": [
+    "knowledge.search",
+    "knowledge.classification.PUBLIC",
+    "knowledge.classification.INTERNAL",
+    "documents.read.public",
+    "documents.read.support",
+    "documents.draft",
     "documents.write",
     "admin.documents"
   ],
