@@ -94,11 +94,11 @@ sequenceDiagram
     participant D1
 
     alt Bearer token (REST or MCP) -- the usual path
-        Caller->>Ath: request + Authorization: Bearer <token>
+        Caller->>Ath: request + Authorization: Bearer token
         Ath->>Account: POST /oauth/introspect (Athenaeum's own client credentials)
         Account-->>Ath: {active, client_id, sub, scope}
         Ath->>Ath: require the `athenaeum` scope,<br/>or the one pre-registered Developer Access client with a subject
-        Note over Ath: a positive result is cached for at most 60s;<br/>a negative one is never cached
+        Note over Ath: a positive result is cached for at most 60s,<br/>a negative one is never cached
     else Cloudflare Access JWT
         Caller->>Ath: request + Cf-Access-Jwt-Assertion
         Ath->>Ath: verify signature via JWKS, check iss + aud
@@ -107,7 +107,7 @@ sequenceDiagram
         Ath->>Ath: timing-safe compare against the stored peppered hash
     end
 
-    Ath->>D1: SELECT * FROM agents WHERE ... AND environment = <this Worker's ENVIRONMENT>
+    Ath->>D1: SELECT * FROM agents WHERE ... AND environment = this Worker's ENVIRONMENT
     D1-->>Ath: agent row (or none)
     alt unknown, disabled, revoked, wrong environment, or any lookup error
         Ath-->>Caller: 401 UNAUTHENTICATED (fail closed)
