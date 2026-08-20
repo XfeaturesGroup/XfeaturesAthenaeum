@@ -30,12 +30,16 @@ Some properties are deliberate and documented rather than defects:
 
 - **Revocation is not instantaneous.** A positive token introspection is cached for at most 60 seconds, so revoking a principal takes effect within that window rather than immediately. This is a deliberate trade-off, tested, and documented.
 - **Authorization denials on read paths are reported as `NOT_FOUND`.** This is intentional: a `FORBIDDEN` would confirm that a resource you may not see exists.
-- **Documents above 4 MB may index incompletely.** The upload limit currently exceeds the indexer's limit. See the index-state reconciliation item in [PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md).
+- **Documents above 4 MB may index incompletely.** The upload limit currently exceeds the indexer's limit, so a very large document can be indexed in part. Retrieval still re-checks every hit against the live row, so this affects completeness, not access control.
 
 See [SECURITY-ASSUMPTIONS.md](docs/SECURITY-ASSUMPTIONS.md) for the full list of things the guarantees depend on. A report that one of those assumptions does not hold in a given deployment is valuable and in scope.
 
 ## Our own review
 
-[SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md) records an adversarial review of this codebase: every finding, its exploit path, its fix, and the regression test written for it. Each of those tests was verified to fail against the vulnerable code — a test that passes both before and after a fix proves nothing, and one such inadequate test is recorded there too.
+This codebase has been through an internal adversarial review. Every finding has a
+regression test, and each of those tests was verified to fail against the
+vulnerable code first — a test that passes both before and after a fix proves
+nothing.
 
-The review is thorough but self-conducted. It is not a substitute for an independent penetration test.
+The review is thorough but self-conducted. It is not a substitute for an
+independent penetration test, and it is not a claim that no defects remain.

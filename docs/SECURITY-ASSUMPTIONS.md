@@ -1,6 +1,6 @@
 # Security assumptions
 
-Every property in [`SECURITY-REVIEW.md`](SECURITY-REVIEW.md) holds *only* if the assumptions below hold. They are listed explicitly so they can be challenged, monitored, and re-verified — an unstated assumption is an unmanaged risk. The list is deliberately short; each one is a place where correctness depends on something this codebase does not itself enforce.
+Every property in [`THREAT-MODEL.md`](THREAT-MODEL.md) holds *only* if the assumptions below hold. They are listed explicitly so they can be challenged, monitored, and re-verified — an unstated assumption is an unmanaged risk. The list is deliberately short; each one is a place where correctness depends on something this codebase does not itself enforce.
 
 | ID | Assumption | Why we depend on it | If it breaks |
 |----|-----------|---------------------|--------------|

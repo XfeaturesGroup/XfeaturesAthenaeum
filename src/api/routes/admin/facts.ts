@@ -12,7 +12,6 @@ import { buildServices } from "../../services";
 import type { RouteContext } from "../../router";
 
 export async function handleCreateFact(request: Request, ctx: RouteContext): Promise<Response> {
-  const body = await readJsonBody(request, createFactRequestSchema);
   const services = buildServices(ctx.env);
 
   const fact = await runAuthenticatedOperation({
@@ -20,11 +19,18 @@ export async function handleCreateFact(request: Request, ctx: RouteContext): Pro
     requestId: ctx.requestId,
     clientKey: ctx.clientKey,
     authorization: { enforce: { action: "admin.facts" } },
-    resource: { type: "fact", id: `${body.namespace}/${body.key}` },
+    // No `resource` here: it named a field of a body this caller has not
+    // yet earned the right to have parsed.
     authenticate: () => authenticateHttpRequest(request, ctx.env),
     handler: async (principal) => {
       await enforceRateLimit(ctx.env, principal, "admin");
       await enforceQuota(ctx.env, principal, "writes");
+      // Parsed only after the caller is known. Reading the body first meant
+      // an anonymous request was parsed and validated before anything checked
+      // who sent it: it spends work on strangers outside the unauthenticated
+      // budget, and it answers questions they should have to authenticate to
+      // ask -- a 400 here and a 404 next door maps the admin surface.
+      const body = await readJsonBody(request, createFactRequestSchema);
       // May only file a fact under a namespace/classification it could read back.
       assertCanAccessFact(principal, body.namespace, body.classification);
 
@@ -62,7 +68,6 @@ export async function handleCreateFact(request: Request, ctx: RouteContext): Pro
 export async function handleUpdateFact(request: Request, ctx: RouteContext): Promise<Response> {
   const namespace = ctx.params["namespace"] ?? "";
   const key = ctx.params["key"] ?? "";
-  const body = await readJsonBody(request, updateFactRequestSchema);
   const services = buildServices(ctx.env);
 
   const fact = await runAuthenticatedOperation({
@@ -75,6 +80,12 @@ export async function handleUpdateFact(request: Request, ctx: RouteContext): Pro
     handler: async (principal) => {
       await enforceRateLimit(ctx.env, principal, "admin");
       await enforceQuota(ctx.env, principal, "writes");
+      // Parsed only after the caller is known. Reading the body first meant
+      // an anonymous request was parsed and validated before anything checked
+      // who sent it: it spends work on strangers outside the unauthenticated
+      // budget, and it answers questions they should have to authenticate to
+      // ask -- a 400 here and a 404 next door maps the admin surface.
+      const body = await readJsonBody(request, updateFactRequestSchema);
       const before = await services.factsRepo.getActive(namespace, key);
       // Existence of a fact the caller cannot read is itself not disclosed.
       if (!before) throw new ApiError(ErrorCode.NOT_FOUND, "Fact not found.");
@@ -153,7 +164,6 @@ export async function handleDeprecateFact(request: Request, ctx: RouteContext): 
 export async function handleRollbackFact(request: Request, ctx: RouteContext): Promise<Response> {
   const namespace = ctx.params["namespace"] ?? "";
   const key = ctx.params["key"] ?? "";
-  const body = await readJsonBody(request, rollbackRequestSchema);
   const services = buildServices(ctx.env);
 
   const fact = await runAuthenticatedOperation({
@@ -166,6 +176,12 @@ export async function handleRollbackFact(request: Request, ctx: RouteContext): P
     handler: async (principal) => {
       await enforceRateLimit(ctx.env, principal, "admin");
       await enforceQuota(ctx.env, principal, "writes");
+      // Parsed only after the caller is known. Reading the body first meant
+      // an anonymous request was parsed and validated before anything checked
+      // who sent it: it spends work on strangers outside the unauthenticated
+      // budget, and it answers questions they should have to authenticate to
+      // ask -- a 400 here and a 404 next door maps the admin surface.
+      const body = await readJsonBody(request, rollbackRequestSchema);
       const before = await services.factsRepo.getActive(namespace, key);
       if (!before) throw new ApiError(ErrorCode.NOT_FOUND, "Fact not found.");
       assertCanAccessFact(principal, namespace, before.classification);

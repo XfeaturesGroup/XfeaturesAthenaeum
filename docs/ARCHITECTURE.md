@@ -89,31 +89,38 @@ Xfeatures Athenaeum never talks to an LLM provider and never sees which model an
 ```mermaid
 sequenceDiagram
     participant Caller
-    participant KC as Xfeatures Athenaeum
-    participant Access as Cloudflare Access
+    participant Ath as Xfeatures Athenaeum
+    participant Account as Xfeatures Account
     participant D1
 
-    alt External / non-Worker caller (REST or MCP)
-        Caller->>Access: request with service token headers
-        Access->>Caller: mints Cf-Access-Jwt-Assertion (aud, common_name)
-        Caller->>KC: request + Cf-Access-Jwt-Assertion
-        KC->>KC: verify JWT via JWKS (jose), check aud + issuer
-        KC->>D1: SELECT * FROM agents WHERE agent_key = common_name
+    alt Bearer token (REST or MCP) -- the usual path
+        Caller->>Ath: request + Authorization: Bearer <token>
+        Ath->>Account: POST /oauth/introspect (Athenaeum's own client credentials)
+        Account-->>Ath: {active, client_id, sub, scope}
+        Ath->>Ath: require the `athenaeum` scope,<br/>or the one pre-registered Developer Access client with a subject
+        Note over Ath: a positive result is cached for at most 60s;<br/>a negative one is never cached
+    else Cloudflare Access JWT
+        Caller->>Ath: request + Cf-Access-Jwt-Assertion
+        Ath->>Ath: verify signature via JWKS, check iss + aud
     else Internal Worker (Service Binding / RPC)
-        Caller->>KC: RPC call + {agentKey, rpcKey}
-        KC->>D1: SELECT * FROM agents WHERE agent_key = ?
-        KC->>KC: timing-safe compare against stored peppered hash
+        Caller->>Ath: RPC call + {agentKey, rpcKey}
+        Ath->>Ath: timing-safe compare against the stored peppered hash
     end
 
-    D1-->>KC: agent row (or none)
-    alt unknown agent, disabled/revoked, or any lookup error
-        KC-->>Caller: 401 UNAUTHENTICATED (fail closed)
-    else active agent found
-        KC->>D1: resolve permissions via agent_roles -> role_permissions -> permissions
-        D1-->>KC: permission set
-        KC->>KC: build Principal {agentId, agentKey, environment, permissions}
+    Ath->>D1: SELECT * FROM agents WHERE ... AND environment = <this Worker's ENVIRONMENT>
+    D1-->>Ath: agent row (or none)
+    alt unknown, disabled, revoked, wrong environment, or any lookup error
+        Ath-->>Caller: 401 UNAUTHENTICATED (fail closed)
+    else active agent
+        Ath->>D1: agent_roles -> role_permissions -> permissions
+        D1-->>Ath: permission set
+        Ath->>Ath: build Principal {agentId, agentKey, environment, permissions}
     end
 ```
+
+The environment check in that D1 lookup is load-bearing: an agent row's
+`environment` must equal the Worker's own, so a development credential cannot
+authenticate against production even if it leaks.
 
 Client-claimed roles are never trusted — the JWT/RPC credential only proves *identity*; every permission comes from a fresh D1 read keyed off that identity.
 

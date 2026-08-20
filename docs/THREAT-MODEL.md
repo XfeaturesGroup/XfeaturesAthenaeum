@@ -15,12 +15,13 @@ See the diagram in [`ARCHITECTURE.md`](ARCHITECTURE.md#trust-boundaries). In sho
 
 ## Authentication
 
-Two paths, one identity model (`agents.agent_key`), one resolution function (`resolvePrincipalForAgentKey` in `src/auth/authenticate.ts`):
+Three ways to present a credential, one identity model, one resolution path in `src/auth/authenticate.ts`. See [AUTHENTICATION.md](AUTHENTICATION.md) for the caller-facing version.
 
-- **External / non-Worker callers** (REST, MCP): Cloudflare Access issues a `Cf-Access-Jwt-Assertion` JWT after verifying a service token. Xfeatures Athenaeum verifies that JWT's signature against Access's published JWKS (`src/auth/access-jwt.ts`, using `jose`), checks `iss`/`aud`, and reads the service token's `common_name` claim as the claimed `agent_key`.
+- **Xfeatures Account tokens** (REST, MCP — the usual path): the caller presents a bearer token, which Athenaeum verifies by introspecting it against Account (RFC 7662) using its own client credentials. The token must carry the `athenaeum` scope, or come from the single pre-registered Developer Access application and carry a subject. A positive introspection is cached for at most 60 seconds; a negative one is never cached, so an Account outage cannot pin a legitimate caller into denial.
+- **Cloudflare Access** (for infrastructure that sits behind Access rather than holding an Account identity): Access issues a `Cf-Access-Jwt-Assertion` JWT after verifying a service token. Xfeatures Athenaeum verifies that JWT's signature against Access's published JWKS (`src/auth/access-jwt.ts`, using `jose`), checks `iss`/`aud`, and reads the service token's `common_name` claim as the claimed `agent_key`.
 - **Internal Worker-to-Worker callers** (Service Binding / RPC): the Service Binding itself only proves "some Worker in this account was configured to call me" — it carries no caller identity. The calling Worker therefore also presents `{agentKey, rpcKey}`; Xfeatures Athenaeum verifies `rpcKey` against a peppered SHA-256 hash (`agents.rpc_key_hash`) using a timing-safe comparison (`src/utils/hash.ts`).
 
-Both paths converge on the same D1 lookup: unknown `agent_key`, `status != 'active'`, or any lookup error all resolve to a denial (`UNAUTHENTICATED`), never to a default identity or role.
+All paths converge on the same D1 lookup, which additionally requires the agent's `environment` to equal this Worker's own: unknown `agent_key`, `status != 'active'`, or any lookup error all resolve to a denial (`UNAUTHENTICATED`), never to a default identity or role.
 
 ## Authorization
 

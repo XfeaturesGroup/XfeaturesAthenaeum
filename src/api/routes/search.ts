@@ -9,7 +9,6 @@ import { buildServices } from "../services";
 import type { RouteContext } from "../router";
 
 export async function handleSearch(request: Request, ctx: RouteContext): Promise<Response> {
-  const body = await readJsonBody(request, searchRequestSchema);
   const services = buildServices(ctx.env);
 
   const result = await runAuthenticatedOperation({
@@ -21,6 +20,12 @@ export async function handleSearch(request: Request, ctx: RouteContext): Promise
     handler: async (principal) => {
       await enforceRateLimit(ctx.env, principal, "search");
       await enforceQuota(ctx.env, principal, "searches");
+      // Parsed only after the caller is known. Reading the body first meant
+      // an anonymous request was parsed and validated before anything checked
+      // who sent it: it spends work on strangers outside the unauthenticated
+      // budget, and it answers questions they should have to authenticate to
+      // ask -- a 400 here and a 404 next door maps the admin surface.
+      const body = await readJsonBody(request, searchRequestSchema);
       return services.search.searchKnowledge(principal, {
         query: body.query,
         domain: body.domain,

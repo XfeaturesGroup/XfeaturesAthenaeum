@@ -8,9 +8,10 @@ import { buildDocumentR2Key, type DocumentStorage } from "../storage/r2";
 import { hashContent } from "../utils/hash";
 import { generateId } from "../utils/ids";
 import { isWithinValidityWindow, nowIso } from "../utils/time";
+import { LIMITS } from "../config";
 import { ApiError, ErrorCode } from "../utils/responses";
 import type { Env } from "../env";
-import type { DocumentContentDTO, DocumentDTO } from "./dto";
+import type { DocumentContentDTO, DocumentDTO, DocumentVersionDTO, TrashedDocumentDTO } from "./dto";
 
 function toDTO(row: DocumentRow): DocumentDTO {
   return {
@@ -21,7 +22,9 @@ function toDTO(row: DocumentRow): DocumentDTO {
     category: row.category,
     classification: row.classification,
     language: row.language,
-    status: row.status,
+    // Stored as `archived` plus a deletion time (migration 0003); reported as
+    // `trashed`, because that is what it is to anyone using it.
+    status: row.trashed_at !== null ? "trashed" : row.status,
     version: row.version,
     updatedAt: row.updated_at,
     sourceReference: row.source_reference
@@ -41,6 +44,14 @@ export interface CreateDocumentDraftInput {
   sourceReference?: string;
 }
 
+/**
+ * The trash is absent from this table on purpose. It is entered by moveToTrash
+ * and left by restoreFromTrash, which maintain the deletion time and the state
+ * to return to. A document in the trash is refused by transitionStatus outright
+ * -- otherwise deletion would become a way to republish something that was
+ * archived, or to strand a document with a deletion time and nowhere to go
+ * back to.
+ */
 const LEGAL_TRANSITIONS: Record<DocumentStatus, DocumentStatus[]> = {
   draft: ["pending_review", "archived"],
   pending_review: ["draft", "active", "archived"],
@@ -238,6 +249,11 @@ export class DocumentsService {
 
     const current = await this.repo.getById(documentId);
     if (!current) throw new ApiError(ErrorCode.NOT_FOUND, "Document not found.");
+    // A document in the trash has a pending deletion and a recorded state to
+    // return to. Moving it anywhere else would discard one or both.
+    if (current.trashed_at !== null) {
+      throw new ApiError(ErrorCode.CONFLICT, "This document is in the trash. Restore it before changing its status.");
+    }
     if (!LEGAL_TRANSITIONS[current.status].includes(nextStatus)) {
       throw new ApiError(ErrorCode.CONFLICT, `Cannot transition document from ${current.status} to ${nextStatus}.`);
     }
@@ -345,19 +361,166 @@ export class DocumentsService {
   }
 
   /** Restore a prior version's bytes (already immutable in R2) as the new current version. */
-  async rollback(principal: Principal, documentId: string, targetVersion: number, updatedBy: string): Promise<DocumentDTO> {
+  async rollback(
+    principal: Principal,
+    documentId: string,
+    targetVersion: number,
+    updatedBy: string,
+    expectedVersion?: number
+  ): Promise<DocumentDTO> {
     assertAuthorized(principal, { action: "documents.write" });
-    const next = await this.repo.rollbackToVersion(documentId, targetVersion, updatedBy);
-    await this.storage.updateMetadata(next.r2_key, {
-      document_id: next.id,
-      classification: next.classification,
-      domain: next.domain,
-      title: next.title,
-      version: String(next.version),
-      language: next.language,
-      status: next.status,
-      updated_at: next.updated_at
+    try {
+      const next = await this.repo.rollbackToVersion(documentId, targetVersion, updatedBy, expectedVersion);
+      await this.storage.updateMetadata(next.r2_key, {
+        document_id: next.id,
+        classification: next.classification,
+        domain: next.domain,
+        title: next.title,
+        version: String(next.version),
+        language: next.language,
+        status: next.status,
+        updated_at: next.updated_at
+      });
+
+      // Same reason as editing: a published document's indexed content is now
+      // the restored version's, and search would otherwise keep answering from
+      // the bytes that were just rolled away from.
+      if (next.status === "active") {
+        const job = await this.ingestionRepo.create(documentId, "reindex");
+        await this.env.INGESTION_QUEUE.send({ jobId: job.id, documentId, jobType: "reindex" });
+      }
+
+      return toDTO(next);
+    } catch (error) {
+      if (error instanceof StaleVersionError) {
+        throw new ApiError(ErrorCode.STALE_VERSION, error.message);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Moves a document to the trash.
+   *
+   * Authorized as `documents.publish` rather than `documents.write`: removing
+   * something from the knowledge base changes what every consumer of the
+   * platform can read, which is the same kind of act as publishing it. A
+   * contributor who may draft and revise may not make things disappear.
+   *
+   * The document stops being retrievable immediately, because every read path
+   * filters on status and `trashed` is not `active`. If it was published, the
+   * index is corrected too -- otherwise search would keep answering from
+   * content that is no longer supposed to exist.
+   */
+  async moveToTrash(principal: Principal, documentId: string, updatedBy: string): Promise<DocumentDTO> {
+    assertAuthorized(principal, { action: "documents.publish" });
+    const current = await this.repo.getById(documentId);
+    if (!current) throw new ApiError(ErrorCode.NOT_FOUND, "Document not found.");
+    if (current.trashed_at !== null) {
+      throw new ApiError(ErrorCode.CONFLICT, "This document is already in the trash.");
+    }
+
+    const trashed = await this.repo.moveToTrash(documentId, updatedBy);
+    if (!trashed) throw new ApiError(ErrorCode.CONFLICT, "This document is already in the trash.");
+
+    // Only a published document is in the index; anything else was never there.
+    if (current.status === "active") {
+      const job = await this.ingestionRepo.create(documentId, "delete");
+      await this.env.INGESTION_QUEUE.send({ jobId: job.id, documentId, jobType: "delete" });
+    }
+    return toDTO(trashed);
+  }
+
+  /**
+   * Returns a trashed document to the state it was in.
+   *
+   * Restoring is not publishing: a document that was a draft comes back a
+   * draft, and one that was archived comes back archived. The previous state
+   * was recorded when it was trashed precisely so that this cannot become a
+   * shortcut past review.
+   */
+  async restoreFromTrash(principal: Principal, documentId: string, updatedBy: string): Promise<DocumentDTO> {
+    assertAuthorized(principal, { action: "documents.publish" });
+    const current = await this.repo.getById(documentId);
+    if (!current) throw new ApiError(ErrorCode.NOT_FOUND, "Document not found.");
+    if (current.trashed_at === null) {
+      throw new ApiError(ErrorCode.CONFLICT, "This document is not in the trash.");
+    }
+
+    const restored = await this.repo.restoreFromTrash(documentId, updatedBy);
+    if (!restored) throw new ApiError(ErrorCode.CONFLICT, "This document is not in the trash.");
+
+    // Back in the index only if it returns to being published.
+    if (restored.status === "active") {
+      const job = await this.ingestionRepo.create(documentId, "reindex");
+      await this.env.INGESTION_QUEUE.send({ jobId: job.id, documentId, jobType: "reindex" });
+    }
+    return toDTO(restored);
+  }
+
+  /**
+   * The trash, bounded by the caller's own clearance exactly like any other
+   * listing -- a document does not become visible to someone new by being
+   * deleted.
+   */
+  async listTrash(principal: Principal, options: { limit: number; offset: number }): Promise<TrashedDocumentDTO[]> {
+    assertAuthorized(principal, { action: "admin.documents" });
+
+    const classifications = permittedClassifications(principal);
+    if (classifications.length === 0) return [];
+
+    const rows = await this.repo.listTrashed({
+      classifications,
+      limit: options.limit,
+      offset: options.offset
     });
-    return toDTO(next);
+
+    const now = Date.now();
+    return rows
+      .filter((row) => authorize(principal, {
+        action: "documents.read",
+        resource: { domain: row.domain, classification: row.classification }
+      }).allowed)
+      .map((row) => {
+        const trashedAtMs = Date.parse(row.trashed_at ?? "");
+        const purgeableAtMs = trashedAtMs + LIMITS.TRASH_RETENTION_HOURS * 3600_000;
+        return {
+          ...toDTO(row),
+          trashedAt: row.trashed_at ?? "",
+          statusBeforeTrash: row.status_before_trash ?? "draft",
+          purgeableAt: new Date(purgeableAtMs).toISOString(),
+          minutesRemaining: Math.max(0, Math.floor((purgeableAtMs - now) / 60_000))
+        };
+      });
+  }
+
+  /**
+   * Version history, so an operator choosing what to roll back to can see what
+   * they are choosing. Read-authorized like the document itself: history
+   * carries titles and classifications, and a caller who may not read the
+   * document may not read its past either.
+   */
+  async listVersions(principal: Principal, documentId: string): Promise<DocumentVersionDTO[]> {
+    assertAuthorized(principal, { action: "admin.documents" });
+    const row = await this.repo.getById(documentId);
+    if (!row) throw new ApiError(ErrorCode.NOT_FOUND, "Document not found.");
+    assertAuthorizedOrNotFound(
+      principal,
+      { action: "documents.read", resource: { domain: row.domain, classification: row.classification } },
+      "Document not found."
+    );
+
+    const versions = await this.repo.listVersions(documentId);
+    return versions.map((version) => ({
+      version: version.version,
+      title: version.title,
+      classification: version.classification,
+      status: version.status,
+      changeNote: version.change_note,
+      contentHash: version.content_hash,
+      createdAt: version.created_at,
+      createdBy: version.created_by,
+      isCurrent: version.version === row.version
+    }));
   }
 }

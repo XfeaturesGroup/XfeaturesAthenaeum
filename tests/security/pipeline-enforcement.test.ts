@@ -14,6 +14,11 @@ import CATALOG_SOURCE from "../../src/knowledge/catalog.ts?raw";
 import FACTS_SERVICE_SOURCE from "../../src/knowledge/facts.ts?raw";
 import DOCUMENTS_SERVICE_SOURCE from "../../src/knowledge/documents.ts?raw";
 import POLICIES_SERVICE_SOURCE from "../../src/knowledge/policies.ts?raw";
+import ADMIN_DOCUMENTS_SOURCE from "../../src/api/routes/admin/documents.ts?raw";
+import ADMIN_AGENTS_SOURCE from "../../src/api/routes/admin/agents.ts?raw";
+import ADMIN_FACTS_SOURCE from "../../src/api/routes/admin/facts.ts?raw";
+import REST_FEEDBACK_SOURCE from "../../src/api/routes/feedback.ts?raw";
+import REST_SEARCH_SOURCE from "../../src/api/routes/search.ts?raw";
 
 const testEnv = env as unknown as Env;
 
@@ -261,4 +266,108 @@ describe("every deferred authorization site has an enforcer that really enforces
       expect(source).toMatch(/assertAuthorized(OrNotFound)?\(/);
     });
   }
+});
+
+/**
+ * Upload endpoints must identify the caller before they read the body.
+ *
+ * Found against production: an anonymous POST carrying a `.exe` was answered
+ * `415 File extension not allowed: .exe`, because readMultipartUpload and
+ * validateUploadCandidate ran ahead of runAuthenticatedOperation. Nothing
+ * leaked and nothing was written, but a stranger could spend the Worker's time
+ * parsing arbitrary multipart bodies and read the upload policy back out of the
+ * error — and could tell upload routes from every other route by 415 vs 401.
+ *
+ * Source inspection rather than a request, because the property is an ordering
+ * one: a behavioural test sees 401 either way once the body happens to be
+ * well-formed.
+ */
+describe("upload handlers authenticate before they parse", () => {
+  const uploadHandlers = ["handleCreateDocumentDraft", "handleCreateDocumentVersion"];
+
+  for (const handler of uploadHandlers) {
+    it(`${handler} does not touch the body outside the authenticated handler`, () => {
+      const body = ADMIN_DOCUMENTS_SOURCE.split(`export async function ${handler}`)[1] ?? "";
+      expect(body, `${handler} not found`).not.toBe("");
+
+      const preamble = body.split("handler: async (principal)")[0] ?? "";
+      expect(preamble, `${handler} parses the request body before authenticating`).not.toContain("readMultipartUpload(");
+      expect(preamble, `${handler} validates an upload before authenticating`).not.toContain("validateUploadCandidate(");
+
+      // ...and still does both somewhere, so this cannot pass by dropping them.
+      expect(body).toContain("readMultipartUpload(");
+      expect(body).toContain("validateUploadCandidate(");
+    });
+  }
+});
+
+/**
+ * The same ordering rule, for every handler that reads a body -- not just the
+ * upload ones.
+ *
+ * The upload fix above was applied to two handlers because those were the two
+ * that had been noticed. A later sweep of the final release tree found twelve
+ * more doing exactly the same thing with `readJsonBody`, and production
+ * confirmed the consequence: an unauthenticated POST to a real admin route
+ * answered 400 "Request validation failed" while the same request to a route
+ * that does not exist answered 404. That difference maps the administrative
+ * surface to anyone who asks, and the parsing happens outside the
+ * unauthenticated budget, which lives inside runAuthenticatedOperation.
+ *
+ * Enumerating handlers from the source rather than listing them means a new
+ * one is covered the day it is written.
+ */
+describe("no handler reads a request body before it knows who is calling", () => {
+  const ROUTE_SOURCES: Record<string, string> = {
+    "admin/agents.ts": ADMIN_AGENTS_SOURCE,
+    "admin/documents.ts": ADMIN_DOCUMENTS_SOURCE,
+    "admin/facts.ts": ADMIN_FACTS_SOURCE,
+    "documents.ts": REST_DOCUMENTS_SOURCE,
+    "facts.ts": REST_FACTS_SOURCE,
+    "policies.ts": REST_POLICIES_SOURCE,
+    "feedback.ts": REST_FEEDBACK_SOURCE,
+    "search.ts": REST_SEARCH_SOURCE
+  };
+
+  const READERS = ["readJsonBody(", "readMultipartUpload(", "request.json(", "request.formData("];
+
+  for (const [name, source] of Object.entries(ROUTE_SOURCES)) {
+    const handlers = [...source.matchAll(/export async function (handle\w+)\(/g)].map((m) => m[1] ?? "");
+
+    for (const handler of handlers) {
+      const whole = source.split(`export async function ${handler}(`)[1] ?? "";
+      // Only handlers that both read a body and use the pipeline are in scope.
+      if (!whole.includes("runAuthenticatedOperation(")) continue;
+      if (!READERS.some((reader) => whole.includes(reader))) continue;
+
+      it(`${name}: ${handler} parses only inside the authenticated handler`, () => {
+        const preamble = whole.split("handler: async (principal)")[0] ?? "";
+        for (const reader of READERS) {
+          expect(preamble, `${handler} calls ${reader} before authenticating`).not.toContain(reader);
+        }
+        // Still reads it somewhere, so this cannot pass by removing the parse.
+        expect(READERS.some((reader) => whole.includes(reader))).toBe(true);
+      });
+    }
+  }
+});
+
+/**
+ * handleTransitionDocumentStatus is the one route whose required permission
+ * depends on the body: publishing needs `documents.publish`, every other
+ * transition needs `admin.documents`, and those are not interchangeable --
+ * role_content_contributor holds the second without the first. It therefore
+ * defers, and must re-assert that exact choice itself once the body is parsed.
+ */
+describe("the deferred transition route still makes its own decision", () => {
+  const body = ADMIN_DOCUMENTS_SOURCE.split("export async function handleTransitionDocumentStatus(")[1] ?? "";
+
+  it("declares itself deferred rather than claiming a fixed enforce action", () => {
+    expect(body).toContain("deferred:");
+    expect(body).toContain('enforcedBy: "handleTransitionDocumentStatus"');
+  });
+
+  it("asserts the publish-or-admin choice itself", () => {
+    expect(body).toMatch(/assertAuthorized\(principal, \{\s*action: body\.status === "active" \? "documents\.publish" : "admin\.documents"\s*\}\)/);
+  });
 });

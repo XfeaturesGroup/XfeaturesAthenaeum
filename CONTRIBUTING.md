@@ -1,5 +1,9 @@
 # Contributing
 
+This repository is source-available for reading rather than open source — see
+[LICENSE](LICENSE). Pull requests from outside the organisation are generally not
+accepted. Security reports are always welcome; see [SECURITY.md](SECURITY.md).
+
 ## Before you start
 
 ```bash

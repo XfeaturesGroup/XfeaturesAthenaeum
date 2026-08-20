@@ -5,7 +5,7 @@ Adding a new internal AI to the company's knowledge should look like:
 ```
 1. register agent   (POST /v1/admin/agents)
 2. assign a role    (part of the same call, via "roles": [...])
-3. configure its identity (RPC key secret, or Access service token)
+3. configure its identity (an Account application, an RPC key secret, or an Access service token)
 4. connect to Xfeatures Athenaeum
 ```
 
@@ -69,22 +69,25 @@ Errors are thrown as plain `Error`s whose `message` is a JSON-encoded `{code, me
 
 For anything outside Cloudflare's network, or a non-Worker backend.
 
-**Put Xfeatures Athenaeum's REST hostname behind Cloudflare Access**, create a Service Auth policy, and issue that agent a service token (Client ID + Client Secret). Register the agent with `"auth_mode": "access"` and `agent_key` equal to the service token's name (that's what ends up in the JWT's `common_name` claim).
+**Register the agent as a service application in Xfeatures Account** (`app_type: "service"`), then create the matching Athenaeum principal and grant it roles. The application's `client_id` is what Athenaeum resolves the principal from, so the two must correspond; a registered application with no Athenaeum principal authenticates successfully and can read nothing.
 
-**Call it** with the service token headers on the *first* hop to Access — Access mints the `Cf-Access-Jwt-Assertion` header automatically for requests that pass through it; you don't construct that header yourself. See `examples/external-rest-client/client.ts`:
+**Get a token, then call with it.** Athenaeum verifies the token by introspection against Account on every request. See [OAUTH-CLIENT-CREDENTIALS.md](OAUTH-CLIENT-CREDENTIALS.md) for the full flow, and `examples/external-rest-client/client.ts`:
 
 ```ts
-const response = await fetch("https://knowledge.internal.example.com/v1/knowledge/search", {
+const token = await getMachineToken(); // client_credentials, cached until shortly before expiry
+
+const response = await fetch("https://athenaeum.xfeatures.net/v1/knowledge/search", {
   method: "POST",
   headers: {
-    "CF-Access-Client-Id": process.env.CF_ACCESS_CLIENT_ID!,
-    "CF-Access-Client-Secret": process.env.CF_ACCESS_CLIENT_SECRET!,
+    Authorization: `Bearer ${token}`,
     "Content-Type": "application/json"
   },
   body: JSON.stringify({ query: "refund policy", domain: "support", limit: 5 })
 });
 const evidence = await response.json();
 ```
+
+**Cloudflare Access remains supported** as an alternative for infrastructure that sits behind Access rather than holding an Account credential: put the hostname behind an Access application with a Service Auth policy, register the agent with `"auth_mode": "access"`, and set `agent_key` to the service token's name — that is what arrives in the JWT's `common_name` claim. Access mints the `Cf-Access-Jwt-Assertion` header itself for requests that pass through it; you never construct it.
 
 Every error follows the same envelope regardless of endpoint:
 
@@ -94,7 +97,9 @@ Every error follows the same envelope regardless of endpoint:
 
 ## 3. An MCP-speaking agent or client — authenticated MCP
 
-For Claude, or any other MCP client, connecting directly. The endpoint is `POST https://<worker-host>/mcp`, Streamable HTTP, stateless (no session to manage). Authentication is identical to REST — the same Access service token, the same resulting JWT header — there is no separate, weaker auth path for MCP.
+For any MCP client connecting directly. The endpoint is `POST https://athenaeum.xfeatures.net/mcp`, Streamable HTTP, stateless (no session to manage). Authentication is identical to REST — the same bearer token, introspected the same way — and there is no separate, weaker auth path for MCP. A person can sign in interactively instead, with Authorization Code + PKCE.
+
+The full guide, including a worked `initialize` / `tools/list` / `tools/call` example and the permission each tool requires, is in [the MCP repository](https://github.com/XfeaturesGroup/XfeaturesAthenaeumMCP).
 
 Tools exposed:
 
@@ -110,7 +115,7 @@ MCP has no tool that can publish, approve a review, or otherwise finalize anythi
 
 The `content-contributor` role (`seed/dev-seed.sql`) is the intended role for an agent that proposes documentation: search, read PUBLIC/INTERNAL documents, `documents.write`, `admin.documents` — deliberately no `documents.publish`.
 
-Example client config (`examples/mcp-client-config/mcp-config.json`) — note the secret is referenced by *name*, never inlined:
+Example client configurations live in the [MCP repository](https://github.com/XfeaturesGroup/XfeaturesAthenaeumMCP/tree/main/examples/clients) — note the token is referenced by *name*, never inlined:
 
 ```jsonc
 {

@@ -25,7 +25,6 @@ import type { RouteContext } from "../../router";
  * `admin.agents`, enforced by the pipeline before this handler runs.
  */
 export async function handleCreateAgent(request: Request, ctx: RouteContext): Promise<Response> {
-  const body = await readJsonBody(request, createAgentRequestSchema);
   const services = buildServices(ctx.env);
 
   const result = await runAuthenticatedOperation({
@@ -33,10 +32,17 @@ export async function handleCreateAgent(request: Request, ctx: RouteContext): Pr
     requestId: ctx.requestId,
     clientKey: ctx.clientKey,
     authorization: { enforce: { action: "admin.agents" } },
-    resource: { type: "agent", id: body.agent_key },
+    // No `resource` here: it named a field of a body this caller has not
+    // yet earned the right to have parsed.
     authenticate: () => authenticateHttpRequest(request, ctx.env),
     handler: async (principal) => {
       await enforceRateLimit(ctx.env, principal, "admin");
+      // Parsed only after the caller is known. Reading the body first meant
+      // an anonymous request was parsed and validated before anything checked
+      // who sent it: it spends work on strangers outside the unauthenticated
+      // budget, and it answers questions they should have to authenticate to
+      // ask -- a 400 here and a 404 next door maps the admin surface.
+      const body = await readJsonBody(request, createAgentRequestSchema);
 
       // An agent may only be created in the environment this Worker serves --
       // a staging identity must never be mintable against production.
@@ -156,7 +162,6 @@ export async function handleListAgents(request: Request, ctx: RouteContext): Pro
 
 export async function handleSetAgentStatus(request: Request, ctx: RouteContext): Promise<Response> {
   const agentId = ctx.params["id"] ?? "";
-  const body = await readJsonBody(request, setAgentStatusSchema);
   const services = buildServices(ctx.env);
 
   const result = await runAuthenticatedOperation({
@@ -168,6 +173,12 @@ export async function handleSetAgentStatus(request: Request, ctx: RouteContext):
     authenticate: () => authenticateHttpRequest(request, ctx.env),
     handler: async (principal) => {
       await enforceRateLimit(ctx.env, principal, "admin");
+      // Parsed only after the caller is known. Reading the body first meant
+      // an anonymous request was parsed and validated before anything checked
+      // who sent it: it spends work on strangers outside the unauthenticated
+      // budget, and it answers questions they should have to authenticate to
+      // ask -- a 400 here and a 404 next door maps the admin surface.
+      const body = await readJsonBody(request, setAgentStatusSchema);
       const current = await services.agentsRepo.findById(agentId);
       if (!current) throw new ApiError(ErrorCode.NOT_FOUND, "Agent not found.");
 
@@ -198,7 +209,6 @@ export async function handleSetAgentStatus(request: Request, ctx: RouteContext):
  */
 export async function handleSetAgentQuota(request: Request, ctx: RouteContext): Promise<Response> {
   const agentId = ctx.params["id"] ?? "";
-  const body = await readJsonBody(request, setAgentQuotaSchema);
   const services = buildServices(ctx.env);
 
   const result = await runAuthenticatedOperation({
@@ -210,6 +220,12 @@ export async function handleSetAgentQuota(request: Request, ctx: RouteContext): 
     authenticate: () => authenticateHttpRequest(request, ctx.env),
     handler: async (principal) => {
       await enforceRateLimit(ctx.env, principal, "admin");
+      // Parsed only after the caller is known. Reading the body first meant
+      // an anonymous request was parsed and validated before anything checked
+      // who sent it: it spends work on strangers outside the unauthenticated
+      // budget, and it answers questions they should have to authenticate to
+      // ask -- a 400 here and a 404 next door maps the admin surface.
+      const body = await readJsonBody(request, setAgentQuotaSchema);
       const agent = await services.agentsRepo.findById(agentId);
       if (!agent) throw new ApiError(ErrorCode.NOT_FOUND, "Agent not found.");
 
@@ -302,7 +318,6 @@ export async function handleGetAgent(request: Request, ctx: RouteContext): Promi
  */
 export async function handleAssignAgentRole(request: Request, ctx: RouteContext): Promise<Response> {
   const agentId = ctx.params["id"] ?? "";
-  const body = await readJsonBody(request, roleAssignmentSchema);
   const services = buildServices(ctx.env);
 
   const result = await runAuthenticatedOperation({
@@ -314,6 +329,12 @@ export async function handleAssignAgentRole(request: Request, ctx: RouteContext)
     authenticate: () => authenticateHttpRequest(request, ctx.env),
     handler: async (principal) => {
       await enforceRateLimit(ctx.env, principal, "admin");
+      // Parsed only after the caller is known. Reading the body first meant
+      // an anonymous request was parsed and validated before anything checked
+      // who sent it: it spends work on strangers outside the unauthenticated
+      // budget, and it answers questions they should have to authenticate to
+      // ask -- a 400 here and a 404 next door maps the admin surface.
+      const body = await readJsonBody(request, roleAssignmentSchema);
       const agent = await services.agentsRepo.findById(agentId);
       if (!agent) throw new ApiError(ErrorCode.NOT_FOUND, "Agent not found.");
 

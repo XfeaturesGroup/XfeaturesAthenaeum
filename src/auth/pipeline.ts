@@ -15,7 +15,7 @@ import type { AuthResult, Principal } from "./types";
  * used as an audit label. Eleven admin routes passed `action: "admin.agents"`
  * (and similar), read as authorized, and were in fact reachable by any
  * authenticated principal -- including a public chatbot identity. See
- * docs/SECURITY-REVIEW.md finding SR-001. The type below makes "I forgot to
+ * security review finding SR-001. The type below makes "I forgot to
  * authorize" unrepresentable.
  *
  * - `enforce`: the pipeline calls authorize() itself, BEFORE the handler runs.
@@ -25,7 +25,7 @@ import type { AuthResult, Principal } from "./types";
  *   must be loaded first (e.g. a document's domain and classification are
  *   unknown until its row is read). The named `enforcedBy` function MUST call
  *   assertAuthorized itself. Every deferred call site is enumerated in
- *   docs/SECURITY-REVIEW.md and covered by a regression test asserting the
+ *   the security review and covered by a regression test asserting the
  *   deferred check actually denies.
  */
 export type OperationAuthorization =

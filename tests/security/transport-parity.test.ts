@@ -80,6 +80,17 @@ describe("MCP has no privileged surface of its own", () => {
       expect(tool).not.toContain("publish");
       expect(tool).not.toContain("approve");
       expect(tool).not.toContain("review_decision");
+      // Destructive lifecycle verbs. The exact tool-list assertion above
+      // would already catch a new tool, but that test reads as "keep this
+      // list current" while this one reads as "these capabilities are
+      // forbidden" -- and the second is the property that actually matters.
+      expect(tool).not.toContain("trash");
+      expect(tool).not.toContain("purge");
+      expect(tool).not.toContain("restore");
+      expect(tool).not.toContain("rollback");
+      expect(tool).not.toContain("role");
+      expect(tool).not.toContain("grant");
+      expect(tool).not.toContain("agent");
     }
     expect(MCP_SOURCE).not.toContain("documents.publish");
     expect(MCP_SOURCE).not.toContain("review-decision");
@@ -90,6 +101,23 @@ describe("MCP has no privileged surface of its own", () => {
     expect(MCP_SOURCE).not.toMatch(/services\.\w+Repo\./);
     expect(MCP_SOURCE).not.toContain("INGESTION_QUEUE");
     expect(MCP_SOURCE).not.toContain("PUBLISH_WORKFLOW");
+  });
+
+  it("reaches no storage binding directly -- no raw D1 or R2 access", () => {
+    // A tool that could call env.DB.prepare() or env.DOCS.get() would sit
+    // underneath every ACL in the system: classification, domain scoping and
+    // the live current-version re-check all live above the binding. Services
+    // are the only legitimate door.
+    expect(MCP_SOURCE).not.toMatch(/env\.DB\b/);
+    expect(MCP_SOURCE).not.toMatch(/env\.DOCS\b/);
+    expect(MCP_SOURCE).not.toMatch(/\.prepare\(/);
+    expect(MCP_SOURCE).not.toMatch(/\bAI_SEARCH\b/);
+  });
+
+  it("exposes no lifecycle mutation: no trash, restore, purge or rollback", () => {
+    for (const forbidden of ["moveToTrash", "restoreFromTrash", "purgeDocument", "purgeExpiredTrash", "rollback", "transitionStatus", "createNewVersion"]) {
+      expect(MCP_SOURCE).not.toContain(forbidden);
+    }
   });
 
   it("authenticates with the same function the REST transport uses", () => {

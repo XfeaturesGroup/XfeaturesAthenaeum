@@ -13,7 +13,7 @@ import { ApiError, ErrorCode } from "../utils/responses";
  * `knowledge.classification.PUBLIC` could edit a RESTRICTED fact it can never
  * read -- and, worse, rewrite its classification to PUBLIC and then read the
  * downgraded copy through the ordinary read path. See SR-002 / SR-003 in
- * docs/SECURITY-REVIEW.md.
+ * the security review.
  */
 export function assertCanAccessFact(principal: Principal, namespace: string, classification: Classification): void {
   assertAuthorizedOrNotFound(principal, { action: "facts.read", resource: { namespace, classification } }, "Fact not found.");

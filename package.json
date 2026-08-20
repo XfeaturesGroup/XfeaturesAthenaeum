@@ -1,8 +1,8 @@
 {
-  "name": "knowledge-core",
-  "version": "0.1.0",
+  "name": "xfeatures-athenaeum",
+  "version": "0.2.0",
   "private": true,
-  "description": "Central retrieval/knowledge service for internal AI agents. D1 facts + R2 documents + AI Search retrieval, behind a single authenticated REST/RPC/MCP interface.",
+  "description": "One authenticated knowledge and retrieval service for AI agents: D1 facts, R2 documents and AI Search retrieval behind a single REST, Workers RPC and MCP interface, with per-caller access control on every request.",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
@@ -39,5 +39,29 @@
   "allowScripts": {
     "esbuild@0.28.1": true,
     "workerd@1.20260811.1": true
-  }
+  },
+  "keywords": [
+    "athenaeum",
+    "xfeatures",
+    "knowledge-base",
+    "retrieval",
+    "rag",
+    "mcp",
+    "model-context-protocol",
+    "cloudflare-workers",
+    "d1",
+    "r2",
+    "oauth2",
+    "access-control",
+    "ai-agents"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/XfeaturesGroup/XfeaturesAthenaeum.git"
+  },
+  "homepage": "https://github.com/XfeaturesGroup/XfeaturesAthenaeum#readme",
+  "bugs": {
+    "url": "https://github.com/XfeaturesGroup/XfeaturesAthenaeum/issues"
+  },
+  "license": "SEE LICENSE IN LICENSE"
 }
