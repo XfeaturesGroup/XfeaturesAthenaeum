@@ -476,3 +476,106 @@ describe("at most one Athenaeum agent may be linked to a given Account identity"
     expect(found?.account_client_id).toBe(clientId);
   });
 });
+
+/**
+ * SR-024 regression.
+ *
+ * The Developer Access application is a PUBLIC client: anyone with an
+ * Xfeatures Account can complete its PKCE flow, and its user-delegated tokens
+ * are admitted without the coarse `athenaeum` scope. That is safe only for as
+ * long as such a token resolves to the SPECIFIC person behind it.
+ *
+ * Before the fix, `resolvePrincipalForAccountIdentity` fell through to
+ * `findByAccountClientId` whenever the subject was unknown -- so a single
+ * agent row linked to the Developer Access client id would have handed its
+ * permissions to every Account holder on earth. Nothing prevented that row
+ * from existing: `POST /v1/admin/agents` accepted it and HQ's Access page
+ * exposes the field.
+ *
+ * The row below is exactly that misconfiguration, seeded deliberately. The
+ * property under test is that it changes nothing.
+ */
+const DEV_ACCESS_CONFLICT_AGENT_KEY = "devaccess-conflict-app";
+const STRANGER_USER_ID = "acct-user-stranger-1";
+
+describe("SR-024: an agent row linked to the Developer Access client id confers nothing", () => {
+  beforeAll(async () => {
+    const testEnv = env as unknown as Env;
+    const agents = new AgentsRepository(testEnv.DB);
+    const roles = new RolesRepository(testEnv.DB);
+
+    // The most powerful role in the system, to make the escalation obvious if
+    // it ever comes back.
+    const adminRole = await roles.getByName("knowledge-admin");
+    if (!adminRole) throw new Error("role fixture missing");
+
+    const conflicting = await agents.create({
+      agentKey: DEV_ACCESS_CONFLICT_AGENT_KEY,
+      name: "Misconfigured Developer Access link",
+      environment: testEnv.ENVIRONMENT,
+      authMode: "account",
+      principalType: "APPLICATION",
+      accountClientId: DEVELOPER_ACCESS_CLIENT,
+      createdBy: "test"
+    });
+    await agents.assignRole(conflicting.id, adminRole.id);
+  });
+
+  it("a stranger's Developer Access token does not inherit the application row's principal", async () => {
+    stubIntrospection({
+      active: true,
+      client_id: DEVELOPER_ACCESS_CLIENT,
+      sub: STRANGER_USER_ID, // a real Account holder, unknown to Athenaeum
+      scope: "openid profile:username email",
+      exp: Math.floor(Date.now() / 1000) + 3600
+    });
+
+    const result = await authenticateHttpRequest(
+      bearer("stranger-developer-access-token"),
+      accountEnv({ ACCOUNT_DEVELOPER_ACCESS_CLIENT_ID: DEVELOPER_ACCESS_CLIENT })
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("UNKNOWN_AGENT");
+  });
+
+  it("the person who IS linked still resolves to their own principal, not the application row", async () => {
+    stubIntrospection({
+      active: true,
+      client_id: DEVELOPER_ACCESS_CLIENT,
+      sub: DEVELOPER_USER_ID,
+      scope: "openid",
+      exp: Math.floor(Date.now() / 1000) + 3600
+    });
+
+    const result = await authenticateHttpRequest(
+      bearer("linked-developer-access-token"),
+      accountEnv({ ACCOUNT_DEVELOPER_ACCESS_CLIENT_ID: DEVELOPER_ACCESS_CLIENT })
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.principal.agentKey).toBe("developer-dev-1");
+    expect(result.principal.agentKey).not.toBe(DEV_ACCESS_CONFLICT_AGENT_KEY);
+  });
+
+  /**
+   * A machine token from an ordinary service application is a different case
+   * and must keep working: there is no subject to resolve, so the client_id
+   * link is the only thing there is. Pinned here so the SR-024 fix cannot
+   * quietly disable the service path with it.
+   */
+  it("an ordinary service application still resolves by client_id", async () => {
+    stubIntrospection({
+      active: true,
+      client_id: SUPPORT_BOT_CLIENT,
+      scope: "athenaeum",
+      exp: Math.floor(Date.now() / 1000) + 3600
+    });
+
+    const result = await authenticateHttpRequest(bearer("supportbot-machine-token"), accountEnv());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.principal.agentKey).toBe("supportbot-app");
+  });
+});

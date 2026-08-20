@@ -16,6 +16,22 @@ export interface VerifiedAccountToken {
   subject: string | null;
   scopes: ReadonlySet<string>;
   expiresAt: number;
+  /**
+   * True when this token was issued to the pre-registered "Athenaeum Developer
+   * Access" application -- the PUBLIC/PKCE client a human signs into.
+   *
+   * SR-024: this is what makes the difference between "an application acting
+   * for a user" and "a person". Anyone with an Xfeatures Account can complete
+   * that client's flow (a public client has no secret to withhold), so such a
+   * token proves only WHICH PERSON is asking, never that the application
+   * itself is a principal. Athenaeum therefore resolves it by subject and by
+   * nothing else -- see resolvePrincipalForAccountIdentity.
+   *
+   * Set from the introspected client_id alone, deliberately not from which
+   * admission rule let the token through: a Developer Access token that
+   * somehow arrived carrying the `athenaeum` scope is still a human's token.
+   */
+  viaDeveloperAccess: boolean;
 }
 
 interface IntrospectionResponse {
@@ -25,6 +41,26 @@ interface IntrospectionResponse {
   scope?: string;
   exp?: number;
   token_type?: string;
+}
+
+/**
+ * Whether a client_id is the configured "Athenaeum Developer Access"
+ * application.
+ *
+ * One predicate, used in three places that must agree: admitting a scope-less
+ * human token (below), refusing to resolve such a token through an application
+ * row (`resolvePrincipalForAccountIdentity`), and refusing to create an
+ * application row on this client id in the first place (`handleCreateAgent`).
+ * An unset or empty variable disables the Developer Access path entirely, so
+ * this returns false and every caller falls back to its ordinary behaviour.
+ */
+export function isDeveloperAccessClientId(
+  env: Pick<Env, "ACCOUNT_DEVELOPER_ACCESS_CLIENT_ID">,
+  clientId: string | null | undefined
+): boolean {
+  const configured = env.ACCOUNT_DEVELOPER_ACCESS_CLIENT_ID;
+  if (configured === undefined || configured.length === 0) return false;
+  return typeof clientId === "string" && clientId === configured;
 }
 
 /**
@@ -150,11 +186,8 @@ export class IntrospectionTokenVerifier implements AccountTokenVerifier {
     // "Athenaeum Developer Access" Account application, and it must carry a
     // subject (a user-delegated token, never a machine one). Every other
     // application, however privileged its owner, still needs the scope.
-    const isDeveloperAccessToken =
-      subject !== null &&
-      this.env.ACCOUNT_DEVELOPER_ACCESS_CLIENT_ID !== undefined &&
-      this.env.ACCOUNT_DEVELOPER_ACCESS_CLIENT_ID.length > 0 &&
-      payload.client_id === this.env.ACCOUNT_DEVELOPER_ACCESS_CLIENT_ID;
+    const viaDeveloperAccess = isDeveloperAccessClientId(this.env, payload.client_id);
+    const isDeveloperAccessToken = viaDeveloperAccess && subject !== null;
 
     if (!scopes.has(ATHENAEUM_ACCESS_SCOPE) && !isDeveloperAccessToken) {
       logSecurityEvent(SecurityEvent.AUTHZ_DENY, {
@@ -169,7 +202,8 @@ export class IntrospectionTokenVerifier implements AccountTokenVerifier {
       clientId: payload.client_id,
       subject,
       scopes,
-      expiresAt
+      expiresAt,
+      viaDeveloperAccess
     };
 
     const expiryMs = expiresAt > 0 ? expiresAt * 1000 : nowMs;

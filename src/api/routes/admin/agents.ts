@@ -1,3 +1,4 @@
+import { isDeveloperAccessClientId } from "../../../auth/account-token";
 import { authenticateHttpRequest } from "../../../auth/authenticate";
 import { assertCanGrantRole } from "../../../auth/resource-guard";
 import { runAuthenticatedOperation } from "../../../auth/pipeline";
@@ -79,6 +80,22 @@ export async function handleCreateAgent(request: Request, ctx: RouteContext): Pr
       }
 
       if (body.auth_mode === "account") {
+        // SR-024: the Developer Access application is a public/PKCE client any
+        // Account holder can sign into. An agent row linked to it would be an
+        // application principal reachable by a person, which is a category
+        // error -- authentication refuses to resolve one (see
+        // resolvePrincipalForAccountIdentity), so creating it could only ever
+        // produce a row that looks like access and grants none. Refused here
+        // as well, so HQ's Access page reports the mistake at the moment it is
+        // made rather than leaving a misleading row behind. Human Developer
+        // Access principals are linked by `account_user_id`, one per person.
+        if (isDeveloperAccessClientId(ctx.env, body.account_client_id)) {
+          throw new ApiError(
+            ErrorCode.INVALID_REQUEST,
+            "The Athenaeum Developer Access application is resolved per person. Link a specific account_user_id instead of its client_id."
+          );
+        }
+
         // One Athenaeum agent per Account identity -- resolvePrincipalForAccountIdentity
         // picks the first match, so a second agent on the same identity would
         // be unreachable rather than merely redundant.

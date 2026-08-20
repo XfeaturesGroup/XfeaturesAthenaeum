@@ -80,20 +80,35 @@ async function resolvePrincipalForAgentKey(agentKey: string, env: Env): Promise<
  * `athenaeum` gate, which is checked during introspection.
  */
 async function resolvePrincipalForAccountIdentity(
-  identity: { clientId: string; subject: string | null },
+  identity: { clientId: string; subject: string | null; viaDeveloperAccess: boolean },
   env: Env
 ): Promise<AuthResult> {
   const repo = new AgentsRepository(env.DB);
   let agent;
   try {
-    // A user-delegated token resolves to the USER principal when Athenaeum
-    // knows that user; otherwise the application itself is the principal. The
-    // subject is preferred so an HQ administrator acting through an
-    // application gets their own (typically broader) permissions rather than
-    // the application's.
-    agent =
-      (identity.subject ? await repo.findByAccountUserId(identity.subject) : null) ??
-      (await repo.findByAccountClientId(identity.clientId));
+    if (identity.viaDeveloperAccess) {
+      // SR-024: the Developer Access application is a PUBLIC client, so
+      // holding a token from it proves nothing about the holder except which
+      // person signed in. It resolves through the explicit person-to-principal
+      // link and through nothing else -- no client_id fallback, ever.
+      //
+      // Without this, one agent row carrying `account_client_id = <Developer
+      // Access>` would hand its permissions to every Xfeatures Account holder,
+      // and Athenaeum's audit trail would attribute all of them to a single
+      // identity. `handleCreateAgent` refuses to create that row too; this is
+      // the half that holds even if one appears by another route.
+      agent = identity.subject ? await repo.findByAccountUserId(identity.subject) : null;
+    } else {
+      // An application token. A user-delegated one resolves to the USER
+      // principal when Athenaeum knows that user; otherwise the application
+      // itself is the principal, which is the intended "application acting for
+      // a user it does not individually know" case. The subject is preferred
+      // so an HQ administrator acting through an application gets their own
+      // (typically broader) permissions rather than the application's.
+      agent =
+        (identity.subject ? await repo.findByAccountUserId(identity.subject) : null) ??
+        (await repo.findByAccountClientId(identity.clientId));
+    }
   } catch {
     logSecurityEvent(SecurityEvent.AUTH_FAILURE, { reason: "ACCOUNT_AGENT_LOOKUP_ERROR" });
     return { ok: false, reason: "DEPENDENCY_UNAVAILABLE" };
@@ -103,7 +118,9 @@ async function resolvePrincipalForAccountIdentity(
     // The token is valid for Xfeatures Account but this identity has no
     // Athenaeum principal: default deny, never an implicit registration.
     logSecurityEvent(SecurityEvent.AUTH_FAILURE, {
-      reason: "NO_ATHENAEUM_PRINCIPAL_FOR_ACCOUNT_IDENTITY",
+      reason: identity.viaDeveloperAccess
+        ? "NO_ATHENAEUM_PRINCIPAL_FOR_DEVELOPER_ACCESS_USER"
+        : "NO_ATHENAEUM_PRINCIPAL_FOR_ACCOUNT_IDENTITY",
       account_client_id: identity.clientId
     });
     return { ok: false, reason: "UNKNOWN_AGENT" };
