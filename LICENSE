@@ -1,25 +1,218 @@
-PROPRIETARY, CONFIDENTIAL, AND RESTRICTED USE LICENSE
+Xfeatures Proprietary Source License
+Version 1.0
 
-Copyright (c) 2026 XfeaturesGroup. All Rights Reserved.
+Copyright (c) 2026 XfeaturesGroup. All rights reserved.
 
-WARNING: This software, its source code, architecture, documentation, and any associated assets (collectively, the "Software") are the exclusive, proprietary property of XfeaturesGroup.
+This is a source-available proprietary license. It is not an open source
+license as defined by the Open Source Initiative, and it does not grant the
+rights that term implies. Read it before you rely on any assumption about
+what you may do with this Software.
 
-By accessing, viewing, or interacting with this Software in any capacity, you acknowledge and agree to the following absolute restrictions:
 
-1. ZERO TOLERANCE FOR UNAUTHORIZED USE
-You are STRICTLY PROHIBITED from copying, reproducing, downloading, distributing, publishing, displaying, performing, modifying, translating, or creating derivative works from this Software. This applies to both commercial and non-commercial (personal, educational, or academic) purposes.
+1. DEFINITIONS
 
-2. NO IMPLIED LICENSES
-No license, right, or permission is granted to you by implication, estoppel, or otherwise. Mere access to this repository or codebase does not constitute a grant of any rights whatsoever.
+"Software" means the source code, object code, documentation, configuration,
+architecture, and all other files contained in this repository, together with
+any updates or new versions XfeaturesGroup makes available under this License.
 
-3. PROHIBITION OF REVERSE ENGINEERING AND ANALYSIS
-You shall not reverse engineer, decompile, disassemble, trace, analyze, or otherwise attempt to discover the source code, underlying ideas, algorithms, or architecture of the Software.
+"Licensor" means XfeaturesGroup, as the owner of the Software.
 
-4. PROHIBITION OF AI TRAINING AND DATA MINING
-You are strictly forbidden from using this Software, in whole or in part, to train, fine-tune, or prompt any artificial intelligence models, machine learning algorithms, or neural networks. Scraping, data mining, and automated extraction are strictly prohibited.
+"You" means the individual or entity exercising any of the permissions this
+License grants.
 
-5. ACTIVE SUPPRESSION AND LIABILITY
-XfeaturesGroup reserves the right to employ active defense mechanisms to protect its infrastructure. Any unauthorized use will result in immediate legal action, claims for maximum statutory damages, and injunctive relief, without the need to prove actual damages.
+"Production Use" means operating the Software, or any modified or derivative
+form of it, to provide a service, function, or capability to any party other
+than You, whether or not for a fee, including as part of a product, platform,
+or internal system relied upon by others.
 
-6. DISCLAIMER AND INDEMNIFICATION
-THE SOFTWARE IS PROVIDED STRICLY "AS IS" FOR XFEATURESGROUP INTERNAL USE ONLY. WE EXPRESSLY DISCLAIM ALL WARRANTIES. In no event shall XfeaturesGroup be liable for any damages arising out of unauthorized access or use. You agree to indemnify and hold harmless XfeaturesGroup from any claims arising from your breach of these terms.
+
+2. GRANT OF RIGHTS
+
+Subject to Your compliance with this License, Licensor grants You a limited,
+non-exclusive, non-transferable, revocable license to:
+
+  (a) view, read, and study the Software for informational and educational
+      purposes;
+
+  (b) clone or download the Software for private evaluation, on Your own
+      systems, not connected to or serving any production workload;
+
+  (c) fork, star, and interact with the Software through the ordinary
+      functionality of the platform hosting this repository, to the extent
+      that functionality is necessary to view or reference it;
+
+  (d) run the Software privately, for non-production experimentation,
+      evaluation, benchmarking, or learning, on Your own infrastructure,
+      without offering its functionality to any third party;
+
+  (e) conduct security research against the Software in a manner consistent
+      with Section 5; and
+
+  (f) exercise any additional right expressly granted to You in a separate
+      written agreement signed by an authorized representative of Licensor.
+
+No right is granted by implication, estoppel, course of dealing, or otherwise.
+Access to this repository, by itself, grants no right beyond what this
+Section expressly states.
+
+
+3. RESTRICTIONS
+
+Except as expressly permitted under Section 2 or under a separate written
+agreement with Licensor, You shall not, and shall not permit or assist any
+third party to:
+
+  (a) operate the Software, or any modified or derivative form of it, as an
+      independent production service, whether for Yourself or for others;
+
+  (b) use the Software for any commercial purpose, including selling access
+      to it or to any service built on it;
+
+  (c) offer the Software, or a service substantially derived from it, as a
+      hosted service, managed service, platform, or Software-as-a-Service
+      offering, under any name;
+
+  (d) sell, rent, lease, sublicense, or relicense the Software, in whole or
+      in part, to any third party;
+
+  (e) distribute or redistribute the Software or any portion of it, except to
+      the extent unavoidably required by the ordinary hosting or repository
+      functionality of the platform through which Licensor makes it
+      available (for example, a routine fork or clone operation performed by
+      that platform itself);
+
+  (f) distribute, publish, or make available any modified version of the
+      Software;
+
+  (g) use the Software, in whole or in substantial part, to build, train, or
+      operate a product or service that competes with any product or service
+      offered by XfeaturesGroup, including another knowledge, retrieval, or
+      agent-integration platform;
+
+  (h) port, copy, or incorporate a substantial portion of the Software's
+      source code, architecture, or design into another product;
+
+  (i) white-label, rebrand, or otherwise present the Software, or a
+      derivative of it, under a name or identity other than Xfeatures
+      Athenaeum, or represent a modified copy as an official, endorsed, or
+      supported Xfeatures product;
+
+  (j) remove, obscure, or alter any copyright, trademark, or other
+      proprietary notice contained in the Software; or
+
+  (k) use the Software in a manner that violates applicable law.
+
+A use is a Production Use, and therefore requires Licensor's separate written
+permission, the moment the Software (or a derivative of it) begins serving
+anyone other than You. Evaluating it privately does not.
+
+
+4. OWNERSHIP AND RESERVED RIGHTS
+
+The Software is licensed, not sold. Licensor retains all right, title, and
+interest in and to the Software, including all copyright, trade secret,
+trademark, and other intellectual property rights, whether or not
+specifically mentioned in this License. Every right not expressly granted to
+You in Section 2 is reserved to Licensor.
+
+Nothing in this License transfers any Xfeatures trademark, service mark, logo,
+or brand element, or grants You any right to use them, except to the minimal
+extent necessary to accurately refer to the Software by name in factual,
+non-branding statements (for example, "built with reference to Xfeatures
+Athenaeum").
+
+
+5. SECURITY RESEARCH
+
+You may examine the Software to identify security vulnerabilities, provided
+that You:
+
+  (a) do not access, modify, or exfiltrate data belonging to XfeaturesGroup,
+      its customers, or any third party;
+
+  (b) do not test against any production deployment of the Software without
+      Licensor's prior written authorization, and confine testing to Your own
+      private, non-production instance;
+
+  (c) report any vulnerability You find to Licensor promptly and privately,
+      following the process described in the repository's SECURITY.md, and
+      do not disclose it publicly before Licensor has had a reasonable
+      opportunity to address it; and
+
+  (d) do not use anything learned through this research to build a competing
+      product or service, per Section 3(g).
+
+Research conducted consistently with this Section is authorized under this
+License and will not be treated as a breach of Section 3.
+
+
+6. TERMINATION
+
+This License terminates automatically, without notice, if You breach any of
+its terms. Licensor may also terminate this License for any User by written
+notice.
+
+Upon termination, You must immediately cease all use of the Software, destroy
+all copies in Your possession or control, and, on request, certify that You
+have done so. Sections 3 (as to conduct occurring before termination), 4, 6,
+8, 9, 10, and 12 survive termination.
+
+
+7. DISCLAIMER OF WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS," WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING WITHOUT LIMITATION THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. LICENSOR DOES
+NOT WARRANT THAT THE SOFTWARE WILL BE ERROR-FREE, SECURE, OR UNINTERRUPTED,
+OR THAT ANY DEFECT WILL BE CORRECTED.
+
+
+8. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL LICENSOR
+BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE
+DAMAGES, OR FOR ANY LOSS OF PROFITS, REVENUE, DATA, OR GOODWILL, ARISING OUT
+OF OR RELATED TO THE SOFTWARE OR THIS LICENSE, REGARDLESS OF THE THEORY OF
+LIABILITY, EVEN IF LICENSOR HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH
+DAMAGES. LICENSOR'S TOTAL LIABILITY ARISING OUT OF OR RELATED TO THIS LICENSE
+WILL NOT EXCEED ONE HUNDRED US DOLLARS (USD $100).
+
+
+9. NO PATENT OR TRADEMARK LICENSE
+
+No license under any patent is granted or implied by this License. No license
+to use any trademark, service mark, trade name, or logo of XfeaturesGroup is
+granted or implied, except as expressly stated in Section 4.
+
+
+10. COMMERCIAL LICENSING
+
+Uses beyond the scope of Section 2 -- including Production Use, commercial
+operation, hosting, or building a derivative commercial product -- may be
+available under a separate commercial agreement. Contact XfeaturesGroup
+through the channel described in the repository's README to discuss terms.
+
+
+11. GENERAL
+
+Entire agreement. This License is the entire agreement between You and
+Licensor concerning the Software and supersedes any prior understanding
+regarding its subject matter. It may be modified only by a written amendment
+signed by an authorized representative of Licensor, or by a separate written
+agreement as described in Section 10.
+
+Severability. If any provision of this License is held unenforceable, the
+remaining provisions remain in full force, and the unenforceable provision
+will be reformed only to the extent necessary to make it enforceable.
+
+No waiver. Licensor's failure to enforce any provision of this License is not
+a waiver of its right to do so later.
+
+Assignment. You may not assign or transfer this License or any rights under
+it without Licensor's prior written consent. Licensor may assign this License
+in connection with a merger, acquisition, or sale of substantially all of its
+relevant assets.
+
+
+By exercising any right granted under Section 2, You accept the terms of this
+License.

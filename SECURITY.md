@@ -43,3 +43,12 @@ nothing.
 
 The review is thorough but self-conducted. It is not a substitute for an
 independent penetration test, and it is not a claim that no defects remain.
+
+## Authorized research
+
+This repository is proprietary source-available software (see [LICENSE](LICENSE)),
+not open source. Security research conducted against Your own private instance,
+reported to us privately and promptly, and not disclosed before we have had a
+reasonable opportunity to respond, is authorized under Section 5 of the license
+and welcomed. Testing against Athenaeum's production deployment, or exfiltrating
+data belonging to anyone else, is not authorized by this policy.

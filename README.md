@@ -21,9 +21,11 @@ every result against the live database before returning it.
 Caller ──▶ REST / RPC / MCP ──▶ authenticate ▸ authorize ▸ audit ──▶ D1 · R2 · AI Search
 ```
 
-> **Licence.** This is source-available for reading, not open source. No permission
-> is granted to use, copy, modify or distribute it. See [LICENSE](LICENSE) for the
-> terms that actually apply.
+> **Source available — proprietary software, not open source.** You may read,
+> clone and privately evaluate this code under the
+> [Xfeatures Proprietary Source License](LICENSE). Running it as a production
+> service, operating it commercially, or redistributing a modified copy
+> requires separate written permission. See [Licence](#licence) below.
 
 ## Why it exists
 
@@ -93,10 +95,12 @@ flowchart LR
     ath --> stores[("D1 · R2 · AI Search")]
 ```
 
-- **[Xfeatures Account](https://github.com/XfeaturesGroup/XfeaturesAccount)** is
-  the identity platform. It answers *who is calling* and nothing else: Athenaeum
-  takes the introspected identity and resolves permissions from its own database.
-  An Account token can prove who you are and still get you nothing here.
+- **Xfeatures Account** is the identity platform for the Xfeatures ecosystem. It
+  answers *who is calling* and nothing else: Athenaeum takes the introspected
+  identity and resolves permissions from its own database. An Account token can
+  prove who you are and still get you nothing here. (Account is a separate,
+  private system; this repository documents the public contract it exposes --
+  RFC 7662 introspection -- not its implementation.)
 - **Xfeatures HQ** is the control plane where people administer documents, review
   and publish them, and manage access. HQ holds no special standing inside
   Athenaeum — it authenticates with its own machine credential and is authorized
@@ -266,3 +270,22 @@ Being direct about the edges rather than implying more than is there:
   and domain filters is not documented — and without that, "one agent's cached
   result can never reach a differently-scoped agent" is not provable.
 - **Bulk operations.** No bulk publish, bulk trash, or bulk purge.
+
+## Licence
+
+**Source available — proprietary software, not open source.**
+
+This repository is licensed under the
+[Xfeatures Proprietary Source License](LICENSE), not MIT, Apache, GPL or any
+OSI-approved license. In short:
+
+| You may, without asking | You may not, without written permission |
+|---|---|
+| Read, clone and study the source | Run it as a production service, for yourself or anyone else |
+| Evaluate it privately, non-production | Offer it, or a derivative, as a hosted or managed service |
+| Fork it through GitHub's own functionality | Sell, sublicense or relicense it |
+| Do responsible security research (see [SECURITY.md](SECURITY.md)) | Distribute a modified copy, or strip its notices |
+| — | Use it, or a substantial part of it, to build a competing platform |
+
+Full terms, including the security-research carve-out and how to request a
+commercial license, are in [LICENSE](LICENSE).
