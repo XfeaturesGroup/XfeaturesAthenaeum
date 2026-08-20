@@ -61,7 +61,7 @@ curl -s https://auth.xfeatures.net/oauth/token \
 Or just let the CLI do all of it:
 
 ```bash
-npx @xfeatures/athenaeum-cli login
+npx @xfeaturesgroup/athenaeum-cli login
 ```
 
 ## Details worth getting right

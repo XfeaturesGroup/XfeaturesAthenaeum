@@ -87,4 +87,4 @@ Standard status codes with a machine-readable `code`. Two worth knowing about:
 ## Client libraries
 
 If you are writing TypeScript, skip the curl:
-[`@xfeatures/athenaeum-sdk`](https://github.com/XfeaturesGroup/XfeaturesAthenaeumSDK).
+[`@xfeaturesgroup/athenaeum`](https://www.npmjs.com/package/@xfeaturesgroup/athenaeum).

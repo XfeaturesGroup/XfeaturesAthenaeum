@@ -39,7 +39,7 @@ First production release.
   after values on administrative writes — never a raw payload dump.
 - **Per-identity rate limiting and quotas**, plus hard application ceilings on query
   length, upload size, pagination and result count.
-- **Client packages**: `@xfeatures/athenaeum-types`, `@xfeatures/athenaeum-sdk` and
+- **Client packages**: `@xfeaturesgroup/athenaeum` and
   the `athenaeum` CLI, which implements the PKCE login flow.
 - **Source-inspection tests** that fail the build on structural regressions: an
   admin route without a permission gate, a handler parsing a body before

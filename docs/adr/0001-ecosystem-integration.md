@@ -72,7 +72,7 @@ Athenaeum recognises four conceptual principal types, mapped onto what Xfeatures
 
 ### 7. Repository organisation
 
-Athenaeum keeps its own repository. HQ and Xfeatures Account are **not** merged into it. Shared surface is published as packages (`@xfeatures/athenaeum-sdk`, `-types`, `-cli`, `-mcp`) consumed by HQ rather than by copying source. The two additive changes to `xfeatures-auth-api` are backwards compatible: no existing grant, endpoint, table, or scope changes behaviour.
+Athenaeum keeps its own repository. HQ and Xfeatures Account are **not** merged into it. Shared surface is published as packages (`@xfeaturesgroup/athenaeum`, `-cli`) consumed by HQ rather than by copying source. The two additive changes to `xfeatures-auth-api` are backwards compatible: no existing grant, endpoint, table, or scope changes behaviour.
 
 ## Consequences
 

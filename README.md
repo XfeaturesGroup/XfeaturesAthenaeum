@@ -171,7 +171,7 @@ repositories, so each has its own README, examples and release cadence:
 | Repository | Use it when |
 |---|---|
 | **[XfeaturesAthenaeumMCP](https://github.com/XfeaturesGroup/XfeaturesAthenaeumMCP)** | You are connecting an AI agent over the Model Context Protocol. Endpoint, both token flows, the nine tools and a connection probe. |
-| **[XfeaturesAthenaeumSDK](https://github.com/XfeaturesGroup/XfeaturesAthenaeumSDK)** | You are writing TypeScript and want a typed client. Dependency-free; `@xfeatures/athenaeum-types` lives there too. |
+| **[XfeaturesAthenaeumSDK](https://github.com/XfeaturesGroup/XfeaturesAthenaeumSDK)** | You are writing TypeScript and want a typed client. Dependency-free; the types live in the same package. |
 | **[XfeaturesAthenaeumCLI](https://github.com/XfeaturesGroup/XfeaturesAthenaeumCLI)** | You want to search from a terminal. Signs in with PKCE, no secret to configure. |
 
 The **MCP server implementation stays here**, in `src/mcp/`, because it shares
