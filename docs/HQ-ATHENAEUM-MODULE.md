@@ -35,7 +35,7 @@ touching HQ's Account identity — proven in the security suite.
 |---|---|
 | `athenaeum:documents:view` | List and open documents and facts |
 | `athenaeum:documents:manage` | Create drafts, edit facts |
-| `athenaeum:documents:publish` | Publish, deprecate, deprecate a fact |
+| `athenaeum:documents:publish` | Publish, deprecate, trash and restore a document or a fact, roll back |
 | `athenaeum:search` | Run authorized retrieval |
 | `athenaeum:ingestion:view` | See indexing state |
 | `athenaeum:ingestion:manage` | Request re-indexing |
@@ -53,7 +53,14 @@ acts, and the split is enforced server-side.
   row because it decides who can read the document, and it defaults to
   INTERNAL rather than PUBLIC.
 - **Facts** — deterministic key/value knowledge answered from D1. Used where a
-  paraphrase would be a bug: prices, SLAs, limits.
+  paraphrase would be a bug: prices, SLAs, limits. Listed across every namespace
+  the console's principal can read, searchable by key, title and value, with
+  version history and a trash on the same 72-hour window documents have.
+  Deprecating and deleting are deliberately distinct: the first stops a fact
+  being answered and keeps every version, the second ends with the value and its
+  history destroyed by the scheduled purge. The namespaces themselves come from
+  Athenaeum, so a namespace nobody thought to add to the console is not thereby
+  invisible to every operator.
 - **Ingestion** — where a document sits between "stored" and "answerable". A
   published-but-not-yet-indexed document is not a failure, and showing that
   plainly stops an operator concluding the knowledge base is wrong when it is
