@@ -3,6 +3,7 @@ import { CatalogService } from "../knowledge/catalog";
 import { DocumentsService } from "../knowledge/documents";
 import { FactsService } from "../knowledge/facts";
 import { FeedbackService } from "../knowledge/feedback";
+import { OperationsService } from "../knowledge/operations";
 import { PoliciesService } from "../knowledge/policies";
 import { SearchService } from "../knowledge/search";
 import { AgentsRepository } from "../repositories/agents.repository";
@@ -31,6 +32,7 @@ export interface Services {
   policies: PoliciesService;
   search: SearchService;
   feedback: FeedbackService;
+  operations: OperationsService;
 
   agentsRepo: AgentsRepository;
   rolesRepo: RolesRepository;
@@ -68,6 +70,7 @@ export function buildServices(env: Env): Services {
     policies: new PoliciesService(policiesRepo),
     search: new SearchService(searchProvider, documentsRepo),
     feedback: new FeedbackService(feedbackRepo),
+    operations: new OperationsService(ingestionRepo, auditRepo),
     agentsRepo,
     rolesRepo,
     auditRepo,

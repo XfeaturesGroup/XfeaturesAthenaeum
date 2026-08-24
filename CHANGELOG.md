@@ -4,6 +4,38 @@ Notable changes to Xfeatures Athenaeum. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The ingestion and audit listings answered with the raw database row.** Both
+  named every field the way SQLite does (`document_id`, `occurred_at`,
+  `attempt_count`) while every other endpoint in this API answers in camelCase,
+  so a client asking for the documented names got `undefined` in every column.
+  Both now project through `OperationsService` into `IngestionJobDTO` /
+  `AuditEventDTO`.
+- **Ingestion rows carry the document's title and slug.** A listing of bare ids
+  cannot tell an operator which document is stuck. The join is a LEFT join: a
+  job outlives the document it indexed, and dropping those rows would erase the
+  evidence that anything was ever indexed for it.
+
+### Added
+
+- Server-side filtering on both listings: `status` for ingestion; `action`,
+  `decision` and `actor_agent_id` for audit. Hunting a refusal no longer means
+  paging through grants to find it.
+
+### Security
+
+- **`actor_identity_raw` is no longer projected into audit responses.** The
+  column holds the unprocessed identity string a caller presented and exists
+  for forensics against the database; the raw-row response handed it to every
+  reader of the audit trail.
+- The audit DTO keeps `N/A` distinct from `ALLOW`. It records an attempt that
+  no authorization decision was ever made about, and any client testing "not
+  DENY" reports those as permitted — in the one view whose purpose is to say
+  what was permitted.
+
 ## [0.1.0]
 
 First production release.

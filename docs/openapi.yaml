@@ -444,11 +444,58 @@ paths:
   /v1/admin/audit:
     get:
       summary: "Admin: read audit events"
+      description: >
+        Every authorization decision, refusals included. Filtering happens
+        server-side so an operator hunting a refusal does not have to page
+        through grants to find it. `actor_identity_raw` is never projected:
+        the column exists for forensics against the database, and a listing
+        that carried it would hand every reader of the trail the raw identity
+        every other caller presented.
       parameters:
-        - { name: limit, in: query, schema: { type: integer } }
-        - { name: offset, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: actor_agent_id, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - name: decision
+          in: query
+          description: >
+            `N/A` is a real value, not an absence -- it records an attempt no
+            authorization decision was ever made about (an unauthenticated
+            connect, for instance). A client that treats "not DENY" as allowed
+            reports those as permitted.
+          schema: { type: string, enum: [ALLOW, DENY, "N/A"] }
       responses:
-        "200": { description: Audit events }
+        "200":
+          description: Audit events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        requestId: { type: string }
+                        occurredAt: { type: string, format: date-time }
+                        actorAgentId: { type: string, nullable: true }
+                        actorAgentKey:
+                          type: string
+                          nullable: true
+                          description: Resolved from `agents`; null once the principal no longer exists.
+                        action: { type: string }
+                        decision: { type: string, enum: [ALLOW, DENY, "N/A"] }
+                        reason: { type: string, nullable: true }
+                        resourceType: { type: string, nullable: true }
+                        resourceId: { type: string, nullable: true }
+                        oldValue: { nullable: true }
+                        newValue: { nullable: true }
+                        status: { type: string, enum: [success, error] }
 
   /.well-known/oauth-protected-resource:
     get:
@@ -1033,11 +1080,49 @@ paths:
   /v1/admin/ingestion:
     get:
       summary: List ingestion jobs
+      description: >
+        Where each document sits between stored and answerable. The document's
+        title and slug are joined in, because a listing of bare ids cannot tell
+        an operator which document is stuck. They are nullable: a job outlives
+        the document it indexed, and the record that indexing happened is worth
+        keeping after the trash purge removes the document itself.
       parameters:
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
         - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: status, in: query, schema: { type: string, enum: [queued, processing, completed, failed] } }
       responses:
-        "200": { description: A page of jobs }
+        "200":
+          description: A page of jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  jobs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        documentId: { type: string, nullable: true }
+                        documentTitle: { type: string, nullable: true }
+                        documentSlug: { type: string, nullable: true }
+                        documentStatus:
+                          type: string
+                          nullable: true
+                          enum: [draft, pending_review, active, deprecated, archived, trashed]
+                        jobType: { type: string, enum: [index, reindex, delete] }
+                        status: { type: string, enum: [queued, processing, completed, failed] }
+                        attempts: { type: integer }
+                        lastErrorCode:
+                          type: string
+                          nullable: true
+                          description: A short coded reason, never a raw exception message.
+                        createdAt: { type: string, format: date-time }
+                        updatedAt: { type: string, format: date-time }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
 

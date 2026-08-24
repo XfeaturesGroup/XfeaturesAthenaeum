@@ -1,5 +1,5 @@
 /** Client-facing shapes. Internal-only DB columns (audit ids, row ids used only for joins) are never included. */
-import type { DocumentStatusView } from "../db/rows";
+import type { AuditDecision, DocumentStatusView, IngestionJobStatus, IngestionJobType } from "../db/rows";
 import type { Classification } from "../security/classification";
 
 export interface FactDTO {
@@ -134,4 +134,60 @@ export interface SearchResultDTO {
   version: number | null;
   updatedAt: string | null;
   score: number;
+}
+
+/**
+ * One row of the ingestion pipeline as the console reads it.
+ *
+ * `documentTitle` is joined from D1 rather than left to the caller: a console
+ * showing a bare id cannot tell an operator which document is stuck, and
+ * making every client fetch each document to find out is a page of requests to
+ * answer one question. The document fields are nullable because a job outlives
+ * the document it indexed -- the trash purge removes the row, and the job is
+ * still the record that indexing happened.
+ */
+export interface IngestionJobDTO {
+  id: string;
+  documentId: string | null;
+  documentTitle: string | null;
+  documentSlug: string | null;
+  documentStatus: DocumentStatusView | null;
+  jobType: IngestionJobType;
+  status: IngestionJobStatus;
+  attempts: number;
+  /** A short coded reason, never a raw exception message. */
+  lastErrorCode: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One authorization decision, as the console reads it.
+ *
+ * `actorIdentityRaw` is deliberately absent. The column holds the unprocessed
+ * identity string a caller presented and exists for forensics against the
+ * database; projecting it into a listing hands every reader of the audit trail
+ * the raw credentials subject of every other caller.
+ *
+ * `decision` keeps all three values. Collapsing "N/A" into ALLOW -- which is
+ * what any `decision !== "DENY"` test does -- reports an attempt that was
+ * never authorized at all as one that was permitted, in the one view whose
+ * entire purpose is to say what was permitted.
+ */
+export interface AuditEventDTO {
+  id: string;
+  requestId: string;
+  occurredAt: string;
+  actorAgentId: string | null;
+  /** Joined from `agents`, so the console can name the principal. Null once the principal is gone. */
+  actorAgentKey: string | null;
+  action: string;
+  decision: AuditDecision;
+  reason: string | null;
+  resourceType: string | null;
+  resourceId: string | null;
+  /** The whitelisted, non-secret fields recorded with the change, already parsed. */
+  oldValue: unknown;
+  newValue: unknown;
+  status: "success" | "error";
 }
