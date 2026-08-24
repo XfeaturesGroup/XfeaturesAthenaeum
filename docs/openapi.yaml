@@ -104,6 +104,34 @@ components:
         verification; the service token's `common_name` must equal the agent key.
 
   schemas:
+    FactProposal:
+      type: object
+      description: >
+        A fact an agent has asked a human to accept. `basedOnVersion` is what
+        makes the review honest: it records which version the proposer was
+        looking at, so a proposal written against a value that has since changed
+        can be refused instead of silently undoing whoever changed it.
+      properties:
+        id: { type: string }
+        namespace: { type: string }
+        key: { type: string }
+        value: {}
+        title: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        classification: { $ref: "#/components/schemas/Classification" }
+        rationale:
+          type: string
+          nullable: true
+          description: Why the proposer believes this value should change, in its own words.
+        basedOnVersion: { type: integer, nullable: true }
+        status: { type: string, enum: [pending, approved, rejected] }
+        proposedBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        reviewedBy: { type: string, nullable: true }
+        reviewedAt: { type: string, format: date-time, nullable: true }
+        reviewNote: { type: string, nullable: true }
+        resultingVersion: { type: integer, nullable: true }
+
     Classification:
       type: string
       enum: [PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED]
@@ -155,6 +183,21 @@ components:
           type: integer
           minimum: 1
           maximum: 25
+        include:
+          type: string
+          enum: [documents, facts, all]
+          default: all
+          description: >
+            Which half of the knowledge base to consult. `facts` are exact
+            stored values, matched lexically in D1 and returned verbatim;
+            `documents` are passages retrieved semantically. In a combined
+            answer the fact results come first -- not because the two scores
+            are comparable, since they are produced by different means, but
+            because a stored value answers "what is X" better than a passage
+            that mentions X.
+        namespace:
+          type: string
+          description: Narrows fact results to one namespace the caller can already read. Never widens.
 
     SearchResult:
       type: object
@@ -241,7 +284,7 @@ paths:
 
   /v1/knowledge/search:
     post:
-      summary: Semantic search over the knowledge base (evidence, not a generated answer)
+      summary: Search the knowledge base -- stored facts and document passages (evidence, not a generated answer)
       requestBody:
         required: true
         content:
@@ -539,6 +582,106 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Not in the trash }
+
+  /v1/admin/fact-proposals:
+    get:
+      summary: "Admin: the fact review queue"
+      description: >
+        Facts an agent has proposed over MCP and a human has not yet decided
+        on. A proposal is a row in its own table, never a fact in a draft
+        state: every read path filters facts by status, and a proposal one
+        forgotten WHERE clause away from being served as knowledge would
+        eventually be served as knowledge. Bounded by the reviewer's own
+        clearance -- an unreviewed value is not less sensitive than a reviewed
+        one.
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, approved, rejected] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: Proposals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  proposals:
+                    type: array
+                    items: { $ref: "#/components/schemas/FactProposal" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/fact-proposals/{id}/approve:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Admin: accept a proposal and write the fact"
+      description: >
+        The only path by which anything an agent proposed becomes something the
+        platform answers. Every check here is against the REVIEWER, never the
+        proposer: `facts.write`, the tier being written, and -- when the fact
+        already exists -- the tier it currently holds, so approving cannot
+        become a way to reclassify something the reviewer could not reclassify
+        directly. A proposal written against a version that has since changed
+        is refused rather than applied over whoever changed it.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string }
+      responses:
+        "200":
+          description: Applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  proposal: { $ref: "#/components/schemas/FactProposal" }
+                  fact: { $ref: "#/components/schemas/Fact" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Already reviewed, or the target fact was deleted or moved to the trash }
+        "422": { description: STALE_VERSION -- the fact changed after the proposal was written }
+
+  /v1/admin/fact-proposals/{id}/reject:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Admin: decline a proposal"
+      description: >
+        Records the decision and the reviewer's note; nothing is written to the
+        knowledge base. Gated like approval, because deciding a proposed value
+        will not be applied is a decision about the knowledge base.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string }
+      responses:
+        "200":
+          description: Rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  proposal: { $ref: "#/components/schemas/FactProposal" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Already reviewed }
 
   /v1/admin/documents:
     get:

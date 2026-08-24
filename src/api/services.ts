@@ -1,6 +1,8 @@
 import type { Env } from "../env";
 import { CatalogService } from "../knowledge/catalog";
 import { DocumentsService } from "../knowledge/documents";
+import { FactProposalsService } from "../knowledge/fact-proposals";
+import { FactSearchService } from "../knowledge/fact-search";
 import { FactsService } from "../knowledge/facts";
 import { FeedbackService } from "../knowledge/feedback";
 import { OperationsService } from "../knowledge/operations";
@@ -10,6 +12,7 @@ import { AgentsRepository } from "../repositories/agents.repository";
 import { AuditRepository } from "../repositories/audit.repository";
 import { CatalogRepository } from "../repositories/catalog.repository";
 import { DocumentsRepository } from "../repositories/documents.repository";
+import { FactProposalsRepository } from "../repositories/fact-proposals.repository";
 import { FactsRepository } from "../repositories/facts.repository";
 import { FeedbackRepository } from "../repositories/feedback.repository";
 import { IngestionRepository } from "../repositories/ingestion.repository";
@@ -31,6 +34,8 @@ export interface Services {
   catalog: CatalogService;
   policies: PoliciesService;
   search: SearchService;
+  factSearch: FactSearchService;
+  factProposals: FactProposalsService;
   feedback: FeedbackService;
   operations: OperationsService;
 
@@ -42,6 +47,7 @@ export interface Services {
   catalogRepo: CatalogRepository;
   documentsRepo: DocumentsRepository;
   factsRepo: FactsRepository;
+  factProposalsRepo: FactProposalsRepository;
   policiesRepo: PoliciesRepository;
   feedbackRepo: FeedbackRepository;
   quotaRepo: QuotaRepository;
@@ -60,6 +66,8 @@ export function buildServices(env: Env): Services {
   const sourcesRepo = new SourcesRepository(env.DB);
   const quotaRepo = new QuotaRepository(env.DB);
 
+  const factSearch = new FactSearchService(factsRepo);
+  const factProposalsRepo = new FactProposalsRepository(env.DB);
   const storage = new R2DocumentStorage(env.DOCS);
   const searchProvider = new AiSearchProvider(env);
 
@@ -68,7 +76,9 @@ export function buildServices(env: Env): Services {
     documents: new DocumentsService(documentsRepo, ingestionRepo, storage, env),
     catalog: new CatalogService(catalogRepo),
     policies: new PoliciesService(policiesRepo),
-    search: new SearchService(searchProvider, documentsRepo),
+    search: new SearchService(searchProvider, documentsRepo, factSearch),
+    factSearch,
+    factProposals: new FactProposalsService(factProposalsRepo, factsRepo),
     feedback: new FeedbackService(feedbackRepo),
     operations: new OperationsService(ingestionRepo, auditRepo),
     agentsRepo,
@@ -79,6 +89,7 @@ export function buildServices(env: Env): Services {
     catalogRepo,
     documentsRepo,
     factsRepo,
+    factProposalsRepo,
     policiesRepo,
     feedbackRepo,
     quotaRepo

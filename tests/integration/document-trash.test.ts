@@ -2,8 +2,10 @@ import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, it } from "vitest";
 import { DocumentsService } from "../../src/knowledge/documents";
 import { DocumentsRepository } from "../../src/repositories/documents.repository";
+import { FactsRepository } from "../../src/repositories/facts.repository";
 import { IngestionRepository } from "../../src/repositories/ingestion.repository";
 import { R2DocumentStorage } from "../../src/storage/r2";
+import { FactSearchService } from "../../src/knowledge/fact-search";
 import { SearchService } from "../../src/knowledge/search";
 import { purgeExpiredTrash } from "../../src/maintenance/purge-trash";
 import { LIMITS } from "../../src/config";
@@ -281,7 +283,7 @@ describe("retrieval refuses a trashed document even when the engine still offers
 
     // While published, a hit on the current object is served.
     const provider = new StagedProvider();
-    const search = new SearchService(provider, new DocumentsRepository(testEnv.DB));
+    const search = new SearchService(provider, new DocumentsRepository(testEnv.DB), new FactSearchService(new FactsRepository(testEnv.DB)));
     provider.staged = [
       { sourceId: currentKey, documentId: id, content: "body", classification: "PUBLIC", domain: "public", score: 0.99 }
     ];
@@ -306,7 +308,7 @@ describe("retrieval refuses a trashed document even when the engine still offers
     await purgeExpiredTrash(testEnv);
 
     const provider = new StagedProvider();
-    const search = new SearchService(provider, new DocumentsRepository(testEnv.DB));
+    const search = new SearchService(provider, new DocumentsRepository(testEnv.DB), new FactSearchService(new FactsRepository(testEnv.DB)));
     provider.staged = [
       { sourceId: currentKey, documentId: id, content: "body", classification: "PUBLIC", domain: "public", score: 0.99 }
     ];

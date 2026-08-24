@@ -169,3 +169,18 @@ export const listFactsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(LIMITS.PAGINATION_MAX).default(LIMITS.PAGINATION_DEFAULT),
   offset: z.coerce.number().int().min(0).default(0)
 });
+/** Query for the fact review queue. */
+export const listFactProposalsQuerySchema = z.object({
+  status: z.enum(["pending", "approved", "rejected"]).optional(),
+  limit: z.coerce.number().int().min(1).max(LIMITS.PAGINATION_MAX).default(LIMITS.PAGINATION_DEFAULT),
+  offset: z.coerce.number().int().min(0).default(0)
+});
+
+/**
+ * A review decision. The note is the reviewer's own words and is stored with
+ * the decision -- for a rejection it is usually the only thing that tells the
+ * proposer what to fix.
+ */
+export const reviewFactProposalSchema = z.object({
+  note: z.string().max(LIMITS.DESCRIPTION_MAX_LENGTH).optional()
+});

@@ -7,6 +7,14 @@ export type GlobalAction =
   | "knowledge.search"
   | "facts.write"
   /**
+   * Propose a fact and hand it to a human reviewer. Separate from
+   * `facts.write` for the reason SR-025 separated `documents.draft` from
+   * `documents.write`: proposing is asking, writing is acting, and a role
+   * belongs to a credential rather than to the transport it was handed to.
+   * Everything that may write facts also holds this.
+   */
+  | "facts.propose"
+  /**
    * Filing a NEW document and submitting it for human review. Deliberately
    * separate from `documents.write` (SR-025): proposing knowledge and revising
    * knowledge that already exists are different acts with different blast

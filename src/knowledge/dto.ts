@@ -65,6 +65,34 @@ export interface TrashedFactDTO extends FactDTO {
   minutesRemaining: number;
 }
 
+/**
+ * A proposed fact, as a reviewer sees it.
+ *
+ * `basedOnVersion` is what makes a review honest: it says which version the
+ * proposer was looking at, so a proposal written against a price that has since
+ * changed can be refused instead of silently undoing whoever changed it.
+ * `proposedBy` and `reviewedBy` carry agent keys rather than internal ids
+ * wherever the principal still exists.
+ */
+export interface FactProposalDTO {
+  id: string;
+  namespace: string;
+  key: string;
+  value: unknown;
+  title: string | null;
+  description: string | null;
+  classification: Classification;
+  rationale: string | null;
+  basedOnVersion: number | null;
+  status: string;
+  proposedBy: string;
+  createdAt: string;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+  resultingVersion: number | null;
+}
+
 export interface DocumentDTO {
   id: string;
   slug: string;

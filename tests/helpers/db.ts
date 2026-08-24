@@ -10,8 +10,16 @@ import migration0002 from "../../migrations/0002_account_identity_link.sql?raw";
 import migration0003 from "../../migrations/0003_document_trash.sql?raw";
 import migration0004 from "../../migrations/0004_documents_draft_permission.sql?raw";
 import migration0005 from "../../migrations/0005_fact_trash.sql?raw";
+import migration0006 from "../../migrations/0006_fact_proposals.sql?raw";
 
-const MIGRATIONS: readonly string[] = [migration0001, migration0002, migration0003, migration0004, migration0005];
+const MIGRATIONS: readonly string[] = [
+  migration0001,
+  migration0002,
+  migration0003,
+  migration0004,
+  migration0005,
+  migration0006
+];
 
 /**
  * D1's `db.exec()` parses its input close to line-by-line and chokes on

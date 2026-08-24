@@ -73,6 +73,36 @@ export interface FactRow {
   updated_by: string | null;
 }
 
+export type FactProposalStatus = "pending" | "approved" | "rejected";
+
+/**
+ * A fact an agent has asked a human to accept.
+ *
+ * Deliberately its own table rather than a status on `facts` (migration 0006):
+ * every read path filters facts by status, and a proposal one forgotten WHERE
+ * clause away from being served as knowledge would eventually be served as
+ * knowledge.
+ */
+export interface FactProposalRow {
+  id: string;
+  namespace: string;
+  key: string;
+  value_json: string;
+  title: string | null;
+  description: string | null;
+  classification: Classification;
+  rationale: string | null;
+  /** The version the proposer believed was current; NULL when the fact did not exist. */
+  based_on_version: number | null;
+  status: FactProposalStatus;
+  proposed_by: string;
+  created_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  resulting_version: number | null;
+}
+
 /**
  * What the database stores. A trashed document is `archived` with a
  * `trashed_at` -- see migration 0003 for why that is two columns rather than a

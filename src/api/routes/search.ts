@@ -30,7 +30,9 @@ export async function handleSearch(request: Request, ctx: RouteContext): Promise
         query: body.query,
         domain: body.domain,
         language: body.language,
-        limit: body.limit
+        limit: body.limit,
+        include: body.include,
+        namespace: body.namespace
       });
     }
   });

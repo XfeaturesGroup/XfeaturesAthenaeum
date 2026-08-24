@@ -347,9 +347,10 @@ export class FactsRepository {
       conditions.push(`status = ${mark(options.status)}`);
     }
 
-    const query = options.query?.trim() ?? "";
-    if (query.length > 0) {
-      const pattern = mark(`%${escapeLike(query)}%`);
+    // Every term has to appear somewhere in the row, so "annual 990" narrows
+    // rather than widens. A single-word query is just the one-term case.
+    for (const term of options.query?.trim().split(/\s+/).filter((part) => part.length > 0) ?? []) {
+      const pattern = mark(`%${escapeLike(term)}%`);
       conditions.push(
         `(key LIKE ${pattern} ESCAPE '\\' OR COALESCE(title,'') LIKE ${pattern} ESCAPE '\\'` +
           ` OR COALESCE(description,'') LIKE ${pattern} ESCAPE '\\' OR value_json LIKE ${pattern} ESCAPE '\\')`

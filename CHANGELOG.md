@@ -25,6 +25,32 @@ Notable changes to Xfeatures Athenaeum. Format follows
 
 ### Added
 
+- **Facts can be searched.** `POST /v1/knowledge/search` now consults both
+  halves of the knowledge base and says which is which in each result's `type`;
+  `include` selects one half, `namespace` narrows the fact half. The matching is
+  lexical and runs in D1 over the canonical rows rather than through the
+  retrieval engine -- so a fact result cannot be stale relative to an index,
+  cannot be a chunk of a superseded version, and nothing is copied out of the
+  database to be searchable. The cost is that it finds words rather than
+  meanings, which the MCP tool descriptions state plainly.
+- **MCP gained the fact tools it was missing**: `knowledge_search_facts`,
+  `knowledge_list_facts` and `knowledge_list_fact_namespaces`, plus `include`
+  and `namespace` on `knowledge_search`. An agent that did not know a fact's
+  exact key previously had only semantic document search, so it answered price
+  questions from passages that mention prices -- the failure facts exist to
+  prevent.
+- **Agents can propose a fact** (migration `0006`): `knowledge_propose_fact`
+  files a proposal into its own table and nothing else. A proposal is never a
+  fact in a draft state -- every read path filters facts by status, and a
+  proposal one forgotten `WHERE` clause away from being served would eventually
+  be served. Applying one is a separate act by a separate principal through
+  `/v1/admin/fact-proposals/{id}/approve`, authorized entirely against the
+  reviewer: their `facts.write`, their clearance for the tier being written and
+  the tier being replaced, and a staleness check against the version the
+  proposer actually saw. The new `facts.propose` permission is narrow by design,
+  for the same reason `documents.draft` was split from `documents.write`
+  (SR-025): a role belongs to a credential, not to the transport it was handed
+  to.
 - **A trash for facts** (migration `0005`), on exactly the model documents have
   had since `0003`. Deprecating a fact keeps it and every version forever, which
   is right for a superseded price and wrong for something that should never have

@@ -9,6 +9,7 @@ import {
   handleAssignAgentRole,
   handleUnassignAgentRole
 } from "./admin/agents";
+import { handleApproveFactProposal, handleListFactProposals, handleRejectFactProposal } from "./admin/fact-proposals";
 import { handleListRoles } from "./admin/roles";
 import { handleListAuditEvents } from "./admin/audit";
 import {
@@ -81,6 +82,12 @@ export function buildRouter(): Router {
   router.post("/v1/admin/facts/:namespace/:key/rollback", handleRollbackFact);
   router.post("/v1/admin/facts/:namespace/:key/trash", handleTrashFact);
   router.post("/v1/admin/facts/:namespace/:key/restore", handleRestoreFact);
+
+  // The review queue for facts proposed over MCP. Nothing an agent proposes
+  // changes what the platform answers until one of these approves it.
+  router.get("/v1/admin/fact-proposals", handleListFactProposals);
+  router.post("/v1/admin/fact-proposals/:id/approve", handleApproveFactProposal);
+  router.post("/v1/admin/fact-proposals/:id/reject", handleRejectFactProposal);
 
   router.get("/v1/admin/documents", handleListDocuments);
   router.get("/v1/admin/documents/:id", handleGetDocumentForAdmin);
