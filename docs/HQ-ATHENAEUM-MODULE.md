@@ -65,8 +65,18 @@ acts, and the split is enforced server-side.
   published-but-not-yet-indexed document is not a failure, and showing that
   plainly stops an operator concluding the knowledge base is wrong when it is
   merely behind.
+- **Proposals** — facts an AI agent has asked a human to accept, over MCP.
+  Nothing in this queue has changed what the platform answers; approving is what
+  does, and it writes the fact under the operator's own authority rather than
+  the agent's. Each entry shows the value it would replace beside the value
+  proposed, the agent's stated reason, and a warning when the fact has moved on
+  since the proposal was written — Athenaeum refuses those rather than writing
+  over whoever changed it.
 - **Search** — the same authorized retrieval an agent gets, not a privileged
-  preview. Provenance shown with each result comes from the canonical D1 row.
+  preview. Covers both halves of the knowledge base and labels each result as a
+  stored fact or a document passage, because an operator who cannot tell them
+  apart will quote a paraphrase as if it were the number. Provenance shown with
+  each result comes from the canonical D1 row.
 - **Audit** — every decision Athenaeum made, refusals included. The actor is
   always derived server-side.
 

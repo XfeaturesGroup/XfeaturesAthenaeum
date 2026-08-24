@@ -20,7 +20,12 @@ export interface ProposeFactInput {
   rationale?: string;
 }
 
-function toDTO(row: FactProposalRow & Partial<Pick<FactProposalWithActorsRow, "proposed_by_key" | "reviewed_by_key">>): FactProposalDTO {
+type CurrentFact = FactProposalDTO["current"];
+
+function toDTO(
+  row: FactProposalRow & Partial<Pick<FactProposalWithActorsRow, "proposed_by_key" | "reviewed_by_key">>,
+  current: CurrentFact = null
+): FactProposalDTO {
   return {
     id: row.id,
     namespace: row.namespace,
@@ -37,7 +42,8 @@ function toDTO(row: FactProposalRow & Partial<Pick<FactProposalWithActorsRow, "p
     reviewedBy: row.reviewed_by_key ?? row.reviewed_by,
     reviewedAt: row.reviewed_at,
     reviewNote: row.review_note,
-    resultingVersion: row.resulting_version
+    resultingVersion: row.resulting_version,
+    current
   };
 }
 
@@ -122,15 +128,37 @@ export class FactProposalsService {
       offset: options.offset
     });
 
-    return rows
-      .filter(
-        (row) =>
-          authorize(principal, {
-            action: "facts.read",
-            resource: { namespace: row.namespace, classification: row.classification }
-          }).allowed
-      )
-      .map(toDTO);
+    const visible = rows.filter(
+      (row) =>
+        authorize(principal, {
+          action: "facts.read",
+          resource: { namespace: row.namespace, classification: row.classification }
+        }).allowed
+    );
+
+    // What each proposal would replace, so the reviewer is judging a change
+    // rather than a bare number. Authorized independently: the fact as it
+    // stands may carry a different tier from the proposal, and a reviewer who
+    // cannot read the current row is shown nothing rather than its value.
+    const targets = await this.facts.getManyByKeys(
+      visible.map((row) => ({ namespace: row.namespace, key: row.key }))
+    );
+    const currentByKey = new Map(targets.map((row) => [`${row.namespace}/${row.key}`, row] as const));
+
+    return visible.map((row) => {
+      const target = currentByKey.get(`${row.namespace}/${row.key}`);
+      if (target === undefined) return toDTO(row, null);
+      const readable = authorize(principal, {
+        action: "facts.read",
+        resource: { namespace: target.namespace, classification: target.classification }
+      }).allowed;
+      return toDTO(
+        row,
+        readable
+          ? { value: JSON.parse(target.value_json) as unknown, version: target.version, classification: target.classification }
+          : null
+      );
+    });
   }
 
   /** How many proposals are waiting, for a console badge. Gated like the queue itself. */

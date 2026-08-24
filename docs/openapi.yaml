@@ -131,6 +131,18 @@ components:
         reviewedAt: { type: string, format: date-time, nullable: true }
         reviewNote: { type: string, nullable: true }
         resultingVersion: { type: integer, nullable: true }
+        current:
+          nullable: true
+          description: >
+            What the proposal would replace, so a reviewer is judging a change
+            rather than a bare number. Null when the fact does not exist yet, or
+            when the reviewer may not read the row as it currently stands -- in
+            which case its value is not disclosed here either.
+          type: object
+          properties:
+            value: {}
+            version: { type: integer }
+            classification: { $ref: "#/components/schemas/Classification" }
 
     Classification:
       type: string

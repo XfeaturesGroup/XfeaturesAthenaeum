@@ -287,6 +287,46 @@ describe("the review queue is bounded like every other listing", () => {
     expect(JSON.stringify(queue)).not.toContain("new-secret");
   });
 
+  it("shows what each proposal would replace, so a reviewer judges a change", async () => {
+    await proposals.propose(
+      contributor.principal,
+      { namespace: "products", key: "widget-price", value: { amount: 12 }, classification: "PUBLIC" },
+      contributor.agentId,
+    );
+    await proposals.propose(
+      contributor.principal,
+      { namespace: "products", key: "brand-new", value: { amount: 1 }, classification: "PUBLIC" },
+      contributor.agentId,
+    );
+
+    const queue = await proposals.list(reviewer.principal, { limit: 50, offset: 0 });
+    const change = queue.find((entry) => entry.key === "widget-price");
+    const creation = queue.find((entry) => entry.key === "brand-new");
+
+    expect(change?.current).toEqual({ value: { amount: 10 }, version: 1, classification: "PUBLIC" });
+    // Nothing to replace: this proposal would create the fact.
+    expect(creation?.current).toBeNull();
+  });
+
+  it("does not disclose a current value the reviewer may not read", async () => {
+    // The fact stands at RESTRICTED; the proposal would move it to PUBLIC. A
+    // reviewer who can see the proposal must still not be shown the value it
+    // would replace.
+    await createFact(testEnv, "products", "sensitive-margin", "RESTRICTED", { margin: "0.87-secret" });
+    await proposals.propose(
+      reviewer.principal,
+      { namespace: "products", key: "sensitive-margin", value: { margin: 0.4 }, classification: "PUBLIC" },
+      reviewer.agentId,
+    );
+
+    const queue = await proposals.list(limitedReviewer.principal, { limit: 50, offset: 0 });
+    const entry = queue.find((row) => row.key === "sensitive-margin");
+
+    expect(entry).toBeDefined();
+    expect(entry?.current).toBeNull();
+    expect(JSON.stringify(queue)).not.toContain("0.87-secret");
+  });
+
   it("needs the administrative permission to open at all", async () => {
     await expect(proposals.list(contributor.principal, { limit: 50, offset: 0 })).rejects.toMatchObject({
       code: ErrorCode.FORBIDDEN

@@ -85,6 +85,28 @@ export class FactsRepository {
     return row ?? null;
   }
 
+  /**
+   * The current rows behind a set of namespace/key pairs, in one query.
+   *
+   * Used by the review queue, which has to show a reviewer what a proposal
+   * would replace. One query rather than one per proposal: a queue of twenty
+   * proposals should not be twenty round trips, and a reviewer looking at a
+   * stale page is worse than one looking at a slow one.
+   */
+  async getManyByKeys(targets: readonly { namespace: string; key: string }[]): Promise<FactRow[]> {
+    if (targets.length === 0) return [];
+    const params: unknown[] = [];
+    const pairs = targets.map((target) => {
+      params.push(target.namespace, target.key);
+      return `(namespace = ?${String(params.length - 1)} AND key = ?${String(params.length)})`;
+    });
+    const { results } = await this.db
+      .prepare(`SELECT * FROM facts WHERE trashed_at IS NULL AND (${pairs.join(" OR ")})`)
+      .bind(...params)
+      .all<FactRow>();
+    return results;
+  }
+
   /** The row as it sits in the trash. Nothing else returns it, by design. */
   async getTrashed(namespace: string, key: string): Promise<FactRow | null> {
     const row = await this.db

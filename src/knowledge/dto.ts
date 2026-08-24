@@ -91,6 +91,16 @@ export interface FactProposalDTO {
   reviewedAt: string | null;
   reviewNote: string | null;
   resultingVersion: number | null;
+  /**
+   * What this proposal would replace, when the reviewer may read it.
+   *
+   * A review is a judgement about a change, and a reviewer shown only the
+   * proposed value is being asked to approve a number they cannot compare to
+   * anything. Null means either the fact does not exist yet -- this proposal
+   * would create it -- or the reviewer cannot read the row as it currently
+   * stands, in which case its content is not disclosed here either.
+   */
+  current: { value: unknown; version: number; classification: Classification } | null;
 }
 
 export interface DocumentDTO {

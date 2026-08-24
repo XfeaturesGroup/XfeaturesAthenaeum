@@ -105,13 +105,17 @@ Tools exposed:
 
 | Tool | Requires | Does |
 |---|---|---|
-| `knowledge_search`, `knowledge_get_fact`, `knowledge_get_document`, `knowledge_get_product`, `knowledge_get_plan`, `knowledge_get_policy`, `knowledge_get_incident` | the matching read permission | Retrieval, read-only. |
+| `knowledge_search`, `knowledge_get_fact`, `knowledge_get_document`, `knowledge_get_product`, `knowledge_get_plan`, `knowledge_get_policy`, `knowledge_get_incident` | the matching read permission | Retrieval, read-only. `knowledge_search` covers both halves of the knowledge base and labels each result `fact` or `document_chunk`; `include` narrows it to one. |
+| `knowledge_search_facts`, `knowledge_list_facts`, `knowledge_list_fact_namespaces` | `knowledge.search` / `facts.read.<namespace>` | Find a fact without knowing its key. Matching is **lexical**, not semantic: "yearly cost" does not find "annual price", so an empty result means nothing matched those words, never that no such fact exists. |
 | `knowledge_propose_document` | `documents.draft` | Creates a **draft** document. Never visible to search or `knowledge_get_document` until a human publishes it. |
 | `knowledge_submit_document_for_review` | `documents.draft` | Hands a draft to the durable publish-approval Workflow. Does **not** publish it. |
+| `knowledge_propose_fact` | `facts.propose` | Files a **proposal**, not a fact. It lives in its own table, is never returned by any read path, and becomes a fact only when a human with `facts.write` approves it in HQ — under their authority, checked against their clearance and against the version the agent actually saw. |
 
 ### Human-in-the-loop publish
 
-MCP has no tool that can publish, approve a review, or otherwise finalize anything — not because the calling agent lacks permission, but because the capability does not exist on this transport at all (`tests/security/transport-parity.test.ts` pins this by inspecting the source: no `documents.publish`, no review-decision handling, no direct Workflow access anywhere in `src/mcp/server.ts`). An agent connected over MCP, however privileged, can propose and submit — a human, working in HQ with `documents.publish`, is the only path to `active`.
+MCP has no tool that can publish, approve a review, apply a proposed fact, or otherwise finalize anything — not because the calling agent lacks permission, but because the capability does not exist on this transport at all (`tests/security/transport-parity.test.ts` pins this by inspecting the source: no `documents.publish`, no review-decision handling, no direct Workflow access anywhere in `src/mcp/server.ts`). An agent connected over MCP, however privileged, can propose and submit — a human, working in HQ with `documents.publish`, is the only path to `active`.
+
+The same shape now covers facts. `knowledge_propose_fact` writes into `fact_proposals`, a table no read path consults; approving one is a separate act by a separate principal, authorized against the **reviewer's** `facts.write` and clearance rather than the proposer's, and refused outright if the fact has changed since the proposal was written.
 
 The `content-contributor` role (`seed/dev-seed.sql`) is the intended role for an
 agent that proposes documentation: search, read PUBLIC/INTERNAL documents, and
