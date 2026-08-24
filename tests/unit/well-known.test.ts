@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { handleProtectedResourceMetadata } from "../../src/api/routes/well-known";
+import { handleOpenAiAppsChallenge, handleProtectedResourceMetadata } from "../../src/api/routes/well-known";
 import { handleMcpRequest } from "../../src/mcp/server";
 import type { Env } from "../../src/env";
 import type { RouteContext } from "../../src/api/router";
@@ -74,6 +74,28 @@ describe("RFC 9728 protected-resource metadata", () => {
     const body = await response.json<{ authorization_servers: string[] }>();
 
     expect(body.authorization_servers).toEqual([]);
+  });
+});
+
+describe("OpenAI Plugin Directory domain challenge", () => {
+  it("serves the configured token as plain text", async () => {
+    const request = new Request("https://athenaeum.test/.well-known/openai-apps-challenge");
+    const response = await handleOpenAiAppsChallenge(
+      request,
+      ctxFor(request, { OPENAI_APPS_CHALLENGE_TOKEN: "challenge-token" })
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    await expect(response.text()).resolves.toBe("challenge-token");
+  });
+
+  it("does not expose a placeholder when no challenge has been configured", async () => {
+    const request = new Request("https://athenaeum.test/.well-known/openai-apps-challenge");
+    const response = await handleOpenAiAppsChallenge(request, ctxFor(request));
+
+    expect(response.status).toBe(404);
   });
 });
 

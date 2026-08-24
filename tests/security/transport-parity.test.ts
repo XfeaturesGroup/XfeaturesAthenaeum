@@ -64,6 +64,32 @@ describe("MCP has no privileged surface of its own", () => {
     );
   });
 
+  it("declares explicit safety annotations for every tool", () => {
+    const readOnly = [
+      "knowledge_search",
+      "knowledge_get_fact",
+      "knowledge_get_document",
+      "knowledge_get_product",
+      "knowledge_get_plan",
+      "knowledge_get_policy",
+      "knowledge_get_incident"
+    ];
+    const draftWrites = ["knowledge_propose_document", "knowledge_submit_document_for_review"];
+
+    for (const tool of readOnly) {
+      const definition = MCP_SOURCE.split(`\"${tool}\"`, 2)[1] ?? "";
+      expect(definition).toContain("annotations: READ_ONLY_TOOL_ANNOTATIONS");
+    }
+    for (const tool of draftWrites) {
+      const definition = MCP_SOURCE.split(`\"${tool}\"`, 2)[1] ?? "";
+      expect(definition).toContain("annotations: DRAFT_WRITE_TOOL_ANNOTATIONS");
+    }
+    expect(MCP_SOURCE).toContain("readOnlyHint: true");
+    expect(MCP_SOURCE).toContain("readOnlyHint: false");
+    expect(MCP_SOURCE).toContain("openWorldHint: false");
+    expect(MCP_SOURCE).toContain("destructiveHint: false");
+  });
+
   it("exposes no tool that can publish, approve or otherwise finalize a change", () => {
     // knowledge_propose_document and knowledge_submit_document_for_review can
     // only create a DRAFT and hand it to a human reviewer -- human-in-the-loop

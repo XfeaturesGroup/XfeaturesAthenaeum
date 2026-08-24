@@ -34,7 +34,7 @@ import { handleDependencyHealth, handleHealth } from "./health";
 import { handleGetPolicy } from "./policies";
 import { handleGetPlan, handleGetProduct } from "./products";
 import { handleSearch } from "./search";
-import { handleProtectedResourceMetadata } from "./well-known";
+import { handleOpenAiAppsChallenge, handleProtectedResourceMetadata } from "./well-known";
 
 export function buildRouter(): Router {
   const router = new Router();
@@ -42,6 +42,7 @@ export function buildRouter(): Router {
   router.get("/health", handleHealth);
   router.get("/v1/admin/health/dependencies", handleDependencyHealth);
   router.get("/.well-known/oauth-protected-resource", handleProtectedResourceMetadata);
+  router.get("/.well-known/openai-apps-challenge", handleOpenAiAppsChallenge);
 
   router.post("/v1/knowledge/search", handleSearch);
 

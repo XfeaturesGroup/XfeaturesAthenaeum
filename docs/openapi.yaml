@@ -475,6 +475,25 @@ paths:
                     type: array
                     items: { type: string }
 
+  /.well-known/openai-apps-challenge:
+    get:
+      summary: OpenAI Plugin Directory domain-control challenge
+      description: >
+        Plain-text challenge value proving control of this origin to the
+        OpenAI Plugin Directory. Unauthenticated by definition -- the value is
+        a deploy-time secret rather than a checked-in constant, so it can be
+        rotated for a later verification attempt without a source change.
+        Answers 404 when no challenge is configured, rather than serving a
+        placeholder that would fail verification in a confusing way.
+      security: []
+      responses:
+        "200":
+          description: The configured challenge value
+          content:
+            text/plain:
+              schema: { type: string }
+        "404": { description: No challenge is configured for this environment }
+
   /v1/admin/health/dependencies:
     get:
       summary: Dependency reachability (operator diagnostics)

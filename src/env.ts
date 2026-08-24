@@ -81,6 +81,13 @@ export interface Env {
    */
   ACCOUNT_DEVELOPER_ACCESS_CLIENT_ID?: string;
 
+  /**
+   * OpenAI Plugin Directory domain-verification challenge value. This is set
+   * as a Worker secret so a later verification challenge can rotate it without
+   * a source change or exposing it in version control.
+   */
+  OPENAI_APPS_CHALLENGE_TOKEN?: string;
+
   // Secrets (set via `wrangler secret put`, never in wrangler.jsonc).
   RPC_KEY_PEPPER: string;
   ACCESS_TEAM_DOMAIN?: string;
