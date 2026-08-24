@@ -155,3 +155,17 @@ export const listAuditQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(LIMITS.PAGINATION_MAX).default(LIMITS.PAGINATION_DEFAULT),
   offset: z.coerce.number().int().min(0).default(0)
 });
+
+/**
+ * Query for the administrative fact listing. `namespace` narrows within what
+ * the caller may already read -- it can never widen it, which the service
+ * enforces against the principal's own namespace scope rather than trusting
+ * this parameter.
+ */
+export const listFactsQuerySchema = z.object({
+  namespace: slugLikeSchema.optional(),
+  status: z.enum(["active", "deprecated"]).optional(),
+  q: z.string().max(LIMITS.QUERY_MAX_LENGTH).optional(),
+  limit: z.coerce.number().int().min(1).max(LIMITS.PAGINATION_MAX).default(LIMITS.PAGINATION_DEFAULT),
+  offset: z.coerce.number().int().min(0).default(0)
+});

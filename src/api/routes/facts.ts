@@ -54,3 +54,31 @@ export async function handleListFacts(request: Request, ctx: RouteContext): Prom
 
   return jsonResponse({ request_id: ctx.requestId, facts, limit, offset });
 }
+
+/**
+ * Every fact namespace this caller can read.
+ *
+ * Unauthenticated callers get nothing, and an unreadable namespace does not
+ * appear at all -- not even as an empty one, which would be a directory of what
+ * exists behind a permission the caller does not hold.
+ */
+export async function handleListFactNamespaces(request: Request, ctx: RouteContext): Promise<Response> {
+  const services = buildServices(ctx.env);
+
+  const namespaces = await runAuthenticatedOperation({
+    env: ctx.env,
+    requestId: ctx.requestId,
+    clientKey: ctx.clientKey,
+    // Deferred: there is no single namespace to authorize against. Each one is
+    // decided individually inside the service, which is what makes the listing
+    // a projection of the caller's own permissions.
+    authorization: { deferred: { auditAction: "facts.read", enforcedBy: "FactsService.listNamespaces" } },
+    authenticate: () => authenticateHttpRequest(request, ctx.env),
+    handler: async (principal) => {
+      await enforceRateLimit(ctx.env, principal, "read");
+      return services.facts.listNamespaces(principal);
+    }
+  });
+
+  return jsonResponse({ request_id: ctx.requestId, namespaces });
+}

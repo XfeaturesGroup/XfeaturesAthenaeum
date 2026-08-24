@@ -25,10 +25,20 @@ import {
   handleSubmitForReview,
   handleTransitionDocumentStatus
 } from "./admin/documents";
-import { handleCreateFact, handleDeprecateFact, handleRollbackFact, handleUpdateFact } from "./admin/facts";
+import {
+  handleCreateFact,
+  handleDeprecateFact,
+  handleListFactTrash,
+  handleListFactVersions,
+  handleListFactsForAdmin,
+  handleRestoreFact,
+  handleRollbackFact,
+  handleTrashFact,
+  handleUpdateFact
+} from "./admin/facts";
 import { handleListIngestionJobs, handleReindexAll, handleReindexDocument } from "./admin/ingestion";
 import { handleGetDocument } from "./documents";
-import { handleListFacts, handleGetFact } from "./facts";
+import { handleListFacts, handleGetFact, handleListFactNamespaces } from "./facts";
 import { handleSubmitFeedback } from "./feedback";
 import { handleDependencyHealth, handleHealth } from "./health";
 import { handleGetPolicy } from "./policies";
@@ -46,6 +56,7 @@ export function buildRouter(): Router {
 
   router.post("/v1/knowledge/search", handleSearch);
 
+  router.get("/v1/facts", handleListFactNamespaces);
   router.get("/v1/facts/:namespace", handleListFacts);
   router.get("/v1/facts/:namespace/:key", handleGetFact);
 
@@ -59,10 +70,17 @@ export function buildRouter(): Router {
   router.post("/v1/feedback", handleSubmitFeedback);
 
   // --- Admin surface (logically distinct from read-only routes) ---
+  router.get("/v1/admin/facts", handleListFactsForAdmin);
   router.post("/v1/admin/facts", handleCreateFact);
+  // `trash` is a view, not a namespace: this path has one segment where
+  // :namespace/:key has two, so the two patterns cannot collide.
+  router.get("/v1/admin/facts/trash", handleListFactTrash);
   router.patch("/v1/admin/facts/:namespace/:key", handleUpdateFact);
   router.delete("/v1/admin/facts/:namespace/:key", handleDeprecateFact);
+  router.get("/v1/admin/facts/:namespace/:key/versions", handleListFactVersions);
   router.post("/v1/admin/facts/:namespace/:key/rollback", handleRollbackFact);
+  router.post("/v1/admin/facts/:namespace/:key/trash", handleTrashFact);
+  router.post("/v1/admin/facts/:namespace/:key/restore", handleRestoreFact);
 
   router.get("/v1/admin/documents", handleListDocuments);
   router.get("/v1/admin/documents/:id", handleGetDocumentForAdmin);

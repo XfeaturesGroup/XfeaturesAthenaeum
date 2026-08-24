@@ -14,6 +14,10 @@ Notable changes to Xfeatures Athenaeum. Format follows
   so a client asking for the documented names got `undefined` in every column.
   Both now project through `OperationsService` into `IngestionJobDTO` /
   `AuditEventDTO`.
+- **The administrative fact writes answered with the raw database row** --
+  `value_json` as a string, the internal id, `created_by` -- while every read
+  path answered with the fact DTO, so a client had to handle two shapes
+  depending on which verb it used. Both now project through `toFactDTO`.
 - **Ingestion rows carry the document's title and slug.** A listing of bare ids
   cannot tell an operator which document is stuck. The join is a LEFT join: a
   job outlives the document it indexed, and dropping those rows would erase the
@@ -21,6 +25,23 @@ Notable changes to Xfeatures Athenaeum. Format follows
 
 ### Added
 
+- **A trash for facts** (migration `0005`), on exactly the model documents have
+  had since `0003`. Deprecating a fact keeps it and every version forever, which
+  is right for a superseded price and wrong for something that should never have
+  been filed at all. A trashed fact stops answering immediately on every
+  transport, is restorable to the state it was in for the retention window, and
+  is then destroyed with its history by the same scheduled purge. There is no
+  manual permanent delete, here or anywhere else.
+- **`GET /v1/facts`** — the namespaces a caller can read, with counts. Both are
+  projections of the caller's permissions: an unreadable namespace does not
+  appear at all, and a count covers only rows the caller may see.
+- **`GET /v1/admin/facts`** — facts across namespaces, with `namespace`,
+  `status` and free-text `q` filters. `admin.facts` makes the listing reachable;
+  every row is still authorized individually, and `namespace` can only narrow
+  the caller's own scope.
+- **`GET /v1/admin/facts/{namespace}/{key}/versions`** — a fact's history with
+  the value each version held, authorized against every version's own
+  classification rather than only the current one.
 - Server-side filtering on both listings: `status` for ingestion; `action`,
   `decision` and `actor_agent_id` for audit. Hunting a refusal no longer means
   paging through grants to find it.

@@ -44,6 +44,12 @@ export interface PermissionRow {
 
 export type FactStatus = "active" | "deprecated";
 
+/**
+ * What the API reports. `trashed` is derived from `trashed_at` rather than
+ * stored -- see migration 0005 for why that is a column and not a third status.
+ */
+export type FactStatusView = FactStatus | "trashed";
+
 export interface FactRow {
   id: string;
   namespace: string;
@@ -57,6 +63,10 @@ export interface FactRow {
   source_id: string | null;
   valid_from: string | null;
   valid_until: string | null;
+  /** ISO timestamp the fact entered the trash; NULL unless it is in the trash. */
+  trashed_at: string | null;
+  /** The state a restore returns it to. Recorded when trashed, because it cannot be inferred later. */
+  status_before_trash: FactStatus | null;
   created_at: string;
   updated_at: string;
   created_by: string | null;

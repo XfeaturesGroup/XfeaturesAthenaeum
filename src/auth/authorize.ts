@@ -162,3 +162,34 @@ export function documentDomainScope(principal: Principal): DocumentDomainScope {
   }
   return { kind: "enumerated", domains };
 }
+
+const FACT_READ_PREFIX = "facts.read.";
+
+/**
+ * The fact namespaces a principal can read, in the same shape and for the same
+ * reason as `documentDomainScope`: a listing that spans namespaces has to be
+ * bounded BEFORE the query runs, not filtered afterwards, or an unreadable row
+ * consumes the page budget and the caller learns how many facts it cannot see.
+ *
+ * `all` means the principal holds `facts.read.*`. `enumerated` lists exactly
+ * the namespaces granted; empty means the principal can read no fact at all and
+ * the caller must short-circuit rather than query unfiltered.
+ *
+ * Sound only because `permissionSatisfies` rejects wildcards shallower than
+ * `<a>.<b>.*`, so `facts.*` cannot silently grant reads outside this scan.
+ */
+export type FactNamespaceScope = { kind: "all" } | { kind: "enumerated"; namespaces: string[] };
+
+export function factNamespaceScope(principal: Principal): FactNamespaceScope {
+  const namespaces: string[] = [];
+  for (const granted of principal.permissions) {
+    if (granted === `${FACT_READ_PREFIX}*`) {
+      return { kind: "all" };
+    }
+    if (granted.startsWith(FACT_READ_PREFIX)) {
+      const namespace = granted.slice(FACT_READ_PREFIX.length);
+      if (namespace.length > 0) namespaces.push(namespace);
+    }
+  }
+  return { kind: "enumerated", namespaces };
+}

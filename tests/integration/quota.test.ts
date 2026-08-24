@@ -125,6 +125,12 @@ describe("SR-022: every mutating admin route consumes daily quota", () => {
     "handleListDocumentVersions",
     // Reads the trash. No writes, no storage cost, rate-limited as a read.
     "handleListTrash",
+    // Facts: the same three read shapes as documents -- a listing, a version
+    // history and the trash. All D1 reads, rate-limited as reads, no cost
+    // beyond the query itself.
+    "handleListFactsForAdmin",
+    "handleListFactVersions",
+    "handleListFactTrash",
     "handleListIngestionJobs",
     "handleListAuditEvents",
     "handleListAgents",

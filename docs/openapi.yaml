@@ -275,6 +275,34 @@ paths:
                   fact: { $ref: "#/components/schemas/Fact" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/facts:
+    get:
+      summary: List the fact namespaces this caller can read
+      description: >
+        A directory of what the caller may ask for, with a count per namespace.
+        Both are projections of the caller's own permissions: a namespace it
+        cannot read does not appear at all -- not even as an empty entry, which
+        would still disclose that it exists -- and the count covers only rows
+        the caller is permitted to see, so a total cannot reveal how much is
+        hidden behind a classification it does not hold.
+      responses:
+        "200":
+          description: Namespaces
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  namespaces:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        namespace: { type: string }
+                        factCount: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
   /v1/facts/{namespace}:
     get:
       summary: List facts in a namespace the caller can see
@@ -378,6 +406,139 @@ paths:
       summary: "Admin: list agents"
       responses:
         "200": { description: Agents }
+
+  /v1/admin/facts/trash:
+    get:
+      summary: "Admin: facts in the trash"
+      description: >
+        What has been deleted and how long is left. Bounded by the caller's own
+        clearance exactly like any other listing -- a fact does not become
+        visible to someone new by being deleted. `retention_hours` is reported
+        with the page so a console cannot disagree with the job that enforces
+        it.
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: Trashed facts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  retention_hours: { type: integer }
+                  facts:
+                    type: array
+                    items:
+                      allOf:
+                        - { $ref: "#/components/schemas/Fact" }
+                        - type: object
+                          properties:
+                            trashedAt: { type: string, format: date-time }
+                            statusBeforeTrash: { type: string }
+                            purgeableAt: { type: string, format: date-time }
+                            minutesRemaining: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/facts/{namespace}/{key}/versions:
+    parameters:
+      - { name: namespace, in: path, required: true, schema: { type: string } }
+      - { name: key, in: path, required: true, schema: { type: string } }
+    get:
+      summary: "Admin: a fact's version history"
+      description: >
+        Every version, newest first, each carrying the value it held -- which is
+        the point: what the price used to be is what an operator is deciding
+        whether to bring back. Authorized against the fact as it stands and
+        against each version's own classification, because a fact that has since
+        been downgraded still has a classified past. Answers 404 if the fact
+        does not exist or the caller may not read it.
+      responses:
+        "200":
+          description: Versions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  versions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        namespace: { type: string }
+                        key: { type: string }
+                        version: { type: integer }
+                        value: {}
+                        title: { type: string, nullable: true }
+                        description: { type: string, nullable: true }
+                        classification: { $ref: "#/components/schemas/Classification" }
+                        status: { type: string }
+                        createdAt: { type: string, format: date-time }
+                        createdBy: { type: string, nullable: true }
+                        isCurrent: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/facts/{namespace}/{key}/trash:
+    parameters:
+      - { name: namespace, in: path, required: true, schema: { type: string } }
+      - { name: key, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Admin: move a fact to the trash"
+      description: >
+        Different from DELETE on the fact, which deprecates it: deprecating says
+        "no longer current" and keeps every version forever, which is right for
+        a superseded price and wrong for something that should never have been
+        filed. A trashed fact stops being answerable immediately through REST,
+        RPC and MCP, is restorable for the retention window, and is then
+        destroyed by the scheduled purge along with its history. There is no
+        manual permanent delete, here or anywhere else in this API.
+      responses:
+        "200":
+          description: Trashed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  fact: { $ref: "#/components/schemas/Fact" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Already in the trash }
+
+  /v1/admin/facts/{namespace}/{key}/restore:
+    parameters:
+      - { name: namespace, in: path, required: true, schema: { type: string } }
+      - { name: key, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Admin: restore a fact from the trash"
+      description: >
+        Returns the fact to the state it was in. A fact that was deprecated
+        comes back deprecated: the previous state is recorded when it is
+        trashed precisely so that restoring cannot quietly republish something
+        that was withdrawn on purpose.
+      responses:
+        "200":
+          description: Restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  fact: { $ref: "#/components/schemas/Fact" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Not in the trash }
 
   /v1/admin/documents:
     get:
@@ -561,6 +722,38 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
 
   /v1/admin/facts:
+    get:
+      summary: "Admin: list facts across namespaces"
+      description: >
+        Requires `admin.facts`, which is what makes the cross-namespace listing
+        reachable -- not what decides which rows come back. Every row is
+        authorized individually against the caller's namespace scope and
+        classification tiers, so an administrative permission cannot become a
+        way to read a tier that was never granted. `namespace` narrows within
+        that scope and can never widen it. Deprecated facts are included, which
+        no ordinary read path does; trashed facts are not.
+      parameters:
+        - { name: namespace, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [active, deprecated] } }
+        - { name: q, in: query, description: Free-text match against key, title, description and the stored value., schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: Facts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  facts:
+                    type: array
+                    items: { $ref: "#/components/schemas/Fact" }
+                  limit: { type: integer }
+                  offset: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       summary: Create a fact
       description: >

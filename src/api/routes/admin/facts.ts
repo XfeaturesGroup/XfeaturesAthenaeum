@@ -2,12 +2,15 @@ import { authenticateHttpRequest } from "../../../auth/authenticate";
 import { runAuthenticatedOperation } from "../../../auth/pipeline";
 import { assertCanAccessFact, assertCanReclassifyFact } from "../../../auth/resource-guard";
 import { auditChange } from "../../../audit/audit";
+import { LIMITS } from "../../../config";
+import { toFactDTO } from "../../../knowledge/facts";
 import { StaleVersionError } from "../../../db/errors";
 import { enforceRateLimit } from "../../../security/rate-limit";
 import { enforceQuota } from "../../../security/quota";
 import { ApiError, ErrorCode, jsonResponse } from "../../../utils/responses";
-import { readJsonBody } from "../../http";
-import { createFactRequestSchema, rollbackRequestSchema, updateFactRequestSchema } from "../../schemas/admin";
+import { parseQuery, readJsonBody } from "../../http";
+import { createFactRequestSchema, listFactsQuerySchema, rollbackRequestSchema, updateFactRequestSchema } from "../../schemas/admin";
+import { paginationSchema } from "../../schemas/common";
 import { buildServices } from "../../services";
 import type { RouteContext } from "../../router";
 
@@ -58,7 +61,7 @@ export async function handleCreateFact(request: Request, ctx: RouteContext): Pro
         resource: { type: "fact", id: `${created.namespace}/${created.key}` },
         newValue: { classification: created.classification, version: created.version }
       });
-      return created;
+      return toFactDTO(created);
     }
   });
 
@@ -118,7 +121,7 @@ export async function handleUpdateFact(request: Request, ctx: RouteContext): Pro
         oldValue: { version: before.version, classification: before.classification, status: before.status },
         newValue: { version: updated.version, classification: updated.classification, status: updated.status }
       });
-      return updated;
+      return toFactDTO(updated);
     }
   });
 
@@ -208,4 +211,163 @@ export async function handleRollbackFact(request: Request, ctx: RouteContext): P
   });
 
   return jsonResponse({ request_id: ctx.requestId, fact });
+}
+
+
+/**
+ * Facts across every namespace the caller may read.
+ *
+ * The console needs this to offer "all facts" at all; before it existed, HQ
+ * had a hardcoded list of six namespaces, so anything filed outside them was
+ * invisible to every operator while being perfectly readable over the API.
+ *
+ * `admin.facts` opens the listing; it does not decide what comes back. The
+ * service authorizes every row against the caller's namespace scope and
+ * classification tiers, so this cannot become a way to read what the caller
+ * was never granted (SR-002/SR-003).
+ */
+export async function handleListFactsForAdmin(request: Request, ctx: RouteContext): Promise<Response> {
+  const query = parseQuery(ctx.url, listFactsQuerySchema);
+  const services = buildServices(ctx.env);
+
+  const facts = await runAuthenticatedOperation({
+    env: ctx.env,
+    requestId: ctx.requestId,
+    clientKey: ctx.clientKey,
+    authorization: { enforce: { action: "admin.facts" } },
+    authenticate: () => authenticateHttpRequest(request, ctx.env),
+    handler: async (principal) => {
+      await enforceRateLimit(ctx.env, principal, "admin");
+      return services.facts.listFactsForAdmin(principal, {
+        namespace: query.namespace,
+        status: query.status,
+        query: query.q,
+        limit: query.limit,
+        offset: query.offset
+      });
+    }
+  });
+
+  return jsonResponse({ request_id: ctx.requestId, facts, limit: query.limit, offset: query.offset });
+}
+
+/** A fact's history: what it used to say, and who changed it. */
+export async function handleListFactVersions(request: Request, ctx: RouteContext): Promise<Response> {
+  const namespace = ctx.params["namespace"] ?? "";
+  const key = ctx.params["key"] ?? "";
+  const services = buildServices(ctx.env);
+
+  const versions = await runAuthenticatedOperation({
+    env: ctx.env,
+    requestId: ctx.requestId,
+    clientKey: ctx.clientKey,
+    authorization: { enforce: { action: "admin.facts" } },
+    resource: { type: "fact", id: `${namespace}/${key}` },
+    authenticate: () => authenticateHttpRequest(request, ctx.env),
+    handler: async (principal) => {
+      await enforceRateLimit(ctx.env, principal, "read");
+      return services.facts.listVersions(principal, namespace, key);
+    }
+  });
+
+  return jsonResponse({ request_id: ctx.requestId, versions });
+}
+
+/**
+ * Moves a fact to the trash.
+ *
+ * Distinct from deprecation, which is what DELETE on this resource does and
+ * always has: deprecating says "no longer current" and keeps every version
+ * forever. This says "this should not be in the knowledge base", and the
+ * content is destroyed by the scheduled purge once the retention window closes.
+ * There is no manual permanent delete here, for the same reason there is none
+ * for documents.
+ */
+export async function handleTrashFact(request: Request, ctx: RouteContext): Promise<Response> {
+  const namespace = ctx.params["namespace"] ?? "";
+  const key = ctx.params["key"] ?? "";
+  const services = buildServices(ctx.env);
+
+  const fact = await runAuthenticatedOperation({
+    env: ctx.env,
+    requestId: ctx.requestId,
+    clientKey: ctx.clientKey,
+    authorization: { enforce: { action: "admin.facts" } },
+    resource: { type: "fact", id: `${namespace}/${key}` },
+    authenticate: () => authenticateHttpRequest(request, ctx.env),
+    handler: async (principal) => {
+      await enforceRateLimit(ctx.env, principal, "admin");
+      await enforceQuota(ctx.env, principal, "writes");
+      const trashed = await services.facts.moveToTrash(principal, namespace, key, principal.agentId);
+      await auditChange({
+        env: ctx.env,
+        requestId: ctx.requestId,
+        action: "admin.facts.trash",
+        principal,
+        resource: { type: "fact", id: `${namespace}/${key}` },
+        newValue: { status: trashed.status }
+      });
+      return trashed;
+    }
+  });
+
+  return jsonResponse({ request_id: ctx.requestId, fact });
+}
+
+/** Returns a trashed fact to the state it was in before it was deleted. */
+export async function handleRestoreFact(request: Request, ctx: RouteContext): Promise<Response> {
+  const namespace = ctx.params["namespace"] ?? "";
+  const key = ctx.params["key"] ?? "";
+  const services = buildServices(ctx.env);
+
+  const fact = await runAuthenticatedOperation({
+    env: ctx.env,
+    requestId: ctx.requestId,
+    clientKey: ctx.clientKey,
+    authorization: { enforce: { action: "admin.facts" } },
+    resource: { type: "fact", id: `${namespace}/${key}` },
+    authenticate: () => authenticateHttpRequest(request, ctx.env),
+    handler: async (principal) => {
+      await enforceRateLimit(ctx.env, principal, "admin");
+      await enforceQuota(ctx.env, principal, "writes");
+      const restored = await services.facts.restoreFromTrash(principal, namespace, key, principal.agentId);
+      await auditChange({
+        env: ctx.env,
+        requestId: ctx.requestId,
+        action: "admin.facts.restore",
+        principal,
+        resource: { type: "fact", id: `${namespace}/${key}` },
+        newValue: { status: restored.status }
+      });
+      return restored;
+    }
+  });
+
+  return jsonResponse({ request_id: ctx.requestId, fact });
+}
+
+/** What has been deleted, and how long is left to change your mind. */
+export async function handleListFactTrash(request: Request, ctx: RouteContext): Promise<Response> {
+  const { limit, offset } = parseQuery(ctx.url, paginationSchema);
+  const services = buildServices(ctx.env);
+
+  const facts = await runAuthenticatedOperation({
+    env: ctx.env,
+    requestId: ctx.requestId,
+    clientKey: ctx.clientKey,
+    authorization: { enforce: { action: "admin.facts" } },
+    authenticate: () => authenticateHttpRequest(request, ctx.env),
+    handler: async (principal) => {
+      await enforceRateLimit(ctx.env, principal, "admin");
+      return services.facts.listTrash(principal, { limit, offset });
+    }
+  });
+
+  return jsonResponse({
+    request_id: ctx.requestId,
+    facts,
+    retention_hours: LIMITS.TRASH_RETENTION_HOURS,
+    limit,
+    offset
+  });
 }

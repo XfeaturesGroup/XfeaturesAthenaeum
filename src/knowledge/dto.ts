@@ -17,6 +17,54 @@ export interface FactDTO {
   sourceId: string | null;
 }
 
+/**
+ * One namespace and how many facts in it this caller can actually read.
+ *
+ * The count is computed from the rows the caller is permitted to see, not from
+ * the namespace as a whole: a total is a disclosure like any other, and a
+ * PUBLIC-only reader should not learn from "products: 40" that 37 facts exist
+ * which it will never be shown.
+ */
+export interface FactNamespaceDTO {
+  namespace: string;
+  factCount: number;
+}
+
+/**
+ * One entry in a fact's history. Carries the value, because that is the whole
+ * point of fact history -- what the price used to be is the thing an operator
+ * is trying to see.
+ */
+export interface FactVersionDTO {
+  namespace: string;
+  key: string;
+  version: number;
+  value: unknown;
+  title: string | null;
+  description: string | null;
+  classification: Classification;
+  status: string;
+  createdAt: string;
+  createdBy: string | null;
+  isCurrent: boolean;
+}
+
+/**
+ * A fact in the trash, with the one thing the operator actually needs: how long
+ * is left. Computed server-side from the retention window, exactly as the
+ * document trash does, so the console and the purge job cannot disagree about
+ * when something expires.
+ */
+export interface TrashedFactDTO extends FactDTO {
+  trashedAt: string;
+  /** The state a restore returns it to. */
+  statusBeforeTrash: string;
+  /** ISO timestamp at which this becomes eligible for purge. */
+  purgeableAt: string;
+  /** Whole minutes remaining; 0 once the window has closed. */
+  minutesRemaining: number;
+}
+
 export interface DocumentDTO {
   id: string;
   slug: string;
