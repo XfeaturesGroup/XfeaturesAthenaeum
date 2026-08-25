@@ -63,13 +63,21 @@ fail differently.
 |---|---|---|
 | Example | `plans/annual-pro` price is `299` | "what does our refund policy actually say" |
 | Lives in | **D1**, as structured rows | **R2**, as canonical document bytes |
-| Retrieved by | Direct lookup on namespace + key | **AI Search**, then re-checked against D1 |
+| Retrieved by | Direct lookup on namespace + key, or a search over the rows themselves | **AI Search**, then re-checked against D1 |
 | Answer when unsure | `NOT_FOUND` | `NO_RELIABLE_MATCH` |
 
-An agent that needs a price should never search for one. A number that must be
-right is a fact lookup; a passage a person will read is a document. Getting a
-plausible-looking wrong price out of a similarity search is exactly the failure
-this split exists to prevent.
+An agent that needs a price should never search a document for one. A number that
+must be right is a fact lookup; a passage a person will read is a document.
+Getting a plausible-looking wrong price out of a similarity search is exactly the
+failure this split exists to prevent.
+
+Facts can be searched too, and deliberately not the same way. The fact search
+matches wording against the canonical rows in D1 rather than against an index, so
+what comes back is the stored value itself — it cannot be stale relative to an
+index, cannot be a fragment of a superseded version, and cannot survive the fact
+being deleted. The price of that is literalness: it finds words, not meanings.
+Search results say which kind each one is, so a caller never has to guess whether
+it is holding a value or a paraphrase of one.
 
 ### What each store is for
 
@@ -170,7 +178,7 @@ repositories, so each has its own README, examples and release cadence:
 
 | Repository | Use it when |
 |---|---|
-| **[XfeaturesAthenaeumMCP](https://github.com/XfeaturesGroup/XfeaturesAthenaeumMCP)** | You are connecting an AI agent over the Model Context Protocol. Endpoint, both token flows, the nine tools and a connection probe. |
+| **[XfeaturesAthenaeumMCP](https://github.com/XfeaturesGroup/XfeaturesAthenaeumMCP)** | You are connecting an AI agent over the Model Context Protocol. Endpoint, both token flows, the thirteen tools and a connection probe. |
 | **[XfeaturesAthenaeumSDK](https://github.com/XfeaturesGroup/XfeaturesAthenaeumSDK)** | You are writing TypeScript and want a typed client. Dependency-free; the types live in the same package. |
 | **[XfeaturesAthenaeumCLI](https://github.com/XfeaturesGroup/XfeaturesAthenaeumCLI)** | You want to search from a terminal. Signs in with PKCE, no secret to configure. |
 
@@ -263,8 +271,9 @@ Being direct about the edges rather than implying more than is there:
 - **Ad-hoc role and permission editing.** Roles are fully modelled and seeded, and
   agent creation grants them, but there is no CRUD surface for editing them after
   the fact.
-- **Admin list views** for facts, products, plans, services and policies. Create and
-  update exist; paginated "list everything of type X" does not.
+- **Admin list views** for products, plans, services and policies. Create and
+  update exist; paginated "list everything of type X" does not. Facts and
+  documents do have one.
 - **A caching layer.** Deliberately absent. AI Search's own response cache is
   disabled, because its cache-key contract with respect to per-agent classification
   and domain filters is not documented — and without that, "one agent's cached
