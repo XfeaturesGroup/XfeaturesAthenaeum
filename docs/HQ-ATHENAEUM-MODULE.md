@@ -40,7 +40,7 @@ touching HQ's Account identity — proven in the security suite.
 | `athenaeum:ingestion:view` | See indexing state |
 | `athenaeum:ingestion:manage` | Request re-indexing |
 | `athenaeum:audit:view` | Read Athenaeum's audit trail |
-| `athenaeum:access:manage` | Reserved for principal management |
+| `athenaeum:access:manage` | Create, disable, revoke and delete principals; grant and withdraw their roles |
 
 Managing a document deliberately does not confer publishing it: drafting
 knowledge and approving it for every consumer of the platform are different
@@ -79,6 +79,12 @@ acts, and the split is enforced server-side.
   each result comes from the canonical D1 row.
 - **Audit** — every decision Athenaeum made, refusals included. The actor is
   always derived server-side.
+- **Access** — who may reach Athenaeum and what each principal can do. A
+  principal can be revoked, which stops its credential, and then deleted, which
+  removes the row: Athenaeum destroys one that never did anything and keeps a
+  tombstone for one that did, so the audit events naming it still point at
+  something. A principal cannot delete itself, which is what stops the console
+  cutting itself off from Athenaeum with one authorized click.
 
 ## Proven end to end
 
