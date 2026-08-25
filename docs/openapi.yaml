@@ -1304,6 +1304,44 @@ paths:
   /v1/admin/agents/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string } }
+    delete:
+      summary: "Admin: remove a principal from Access"
+      description: >
+        Refused unless the principal is already `revoked` -- revoking is what
+        stops a credential working, and deleting only removes the row, so the
+        reversible act always happens first. A principal may not delete itself:
+        HQ operates as a single machine principal, and without that rule one
+        authorized click would cut the console off from Athenaeum with no way
+        back.
+
+
+        What "deleted" means depends on whether there is history to protect,
+        and Athenaeum decides, not the caller. A principal that authenticated
+        no request, filed no feedback and proposed nothing is destroyed
+        outright, roles and quotas with it. One that did any of those becomes a
+        tombstone: gone from every listing and every lookup, every credential
+        binding cleared so it can neither authenticate nor be re-linked to an
+        Account identity, and still present for the audit events, feedback and
+        proposals that name it to point at. `outcome` says which happened.
+      responses:
+        "200":
+          description: Removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string }
+                  agent:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      agent_key: { type: string }
+                      outcome: { type: string, enum: [purged, tombstoned] }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Not revoked, deleting itself, or changed mid-delete }
     get:
       summary: Read one principal, its roles and effective permissions
       responses:

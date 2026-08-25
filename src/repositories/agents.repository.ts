@@ -18,6 +18,8 @@ export interface CreateAgentInput {
 }
 
 export interface ListAgentsOptions {
+  /** Include tombstoned principals. Off by default: a deleted principal is gone from Access. */
+  includeDeleted?: boolean;
   status?: AgentStatus;
   /** Xfeatures Account oauth_applications.client_id -- used by HQ to find the
    * Athenaeum agent (if any) already linked to a given service application. */
@@ -30,7 +32,10 @@ export class AgentsRepository {
   constructor(private readonly db: D1Database) {}
 
   async findByAgentKey(agentKey: string): Promise<AgentRow | null> {
-    const row = await this.db.prepare("SELECT * FROM agents WHERE agent_key = ?1").bind(agentKey).first<AgentRow>();
+    const row = await this.db
+      .prepare("SELECT * FROM agents WHERE agent_key = ?1 AND deleted_at IS NULL")
+      .bind(agentKey)
+      .first<AgentRow>();
     return row ?? null;
   }
 
@@ -43,7 +48,7 @@ export class AgentsRepository {
    */
   async findByAccountClientId(clientId: string): Promise<AgentRow | null> {
     const row = await this.db
-      .prepare("SELECT * FROM agents WHERE account_client_id = ?1 AND auth_mode = 'account'")
+      .prepare("SELECT * FROM agents WHERE account_client_id = ?1 AND auth_mode = 'account' AND deleted_at IS NULL")
       .bind(clientId)
       .first<AgentRow>();
     return row ?? null;
@@ -51,14 +56,17 @@ export class AgentsRepository {
 
   async findByAccountUserId(userId: string): Promise<AgentRow | null> {
     const row = await this.db
-      .prepare("SELECT * FROM agents WHERE account_user_id = ?1 AND auth_mode = 'account'")
+      .prepare("SELECT * FROM agents WHERE account_user_id = ?1 AND auth_mode = 'account' AND deleted_at IS NULL")
       .bind(userId)
       .first<AgentRow>();
     return row ?? null;
   }
 
   async findById(id: string): Promise<AgentRow | null> {
-    const row = await this.db.prepare("SELECT * FROM agents WHERE id = ?1").bind(id).first<AgentRow>();
+    const row = await this.db
+      .prepare("SELECT * FROM agents WHERE id = ?1 AND deleted_at IS NULL")
+      .bind(id)
+      .first<AgentRow>();
     return row ?? null;
   }
 
@@ -71,7 +79,7 @@ export class AgentsRepository {
          JOIN role_permissions rp ON rp.role_id = ar.role_id
          JOIN permissions p ON p.id = rp.permission_id
          JOIN agents a ON a.id = ar.agent_id
-         WHERE ar.agent_id = ?1 AND a.status = 'active'`
+         WHERE ar.agent_id = ?1 AND a.status = 'active' AND a.deleted_at IS NULL`
       )
       .bind(agentId)
       .all<{ key: string }>();
@@ -91,6 +99,8 @@ export class AgentsRepository {
       principal_type: input.principalType ?? (input.authMode === "rpc" ? "SERVICE" : "APPLICATION"),
       account_client_id: input.accountClientId ?? null,
       account_user_id: input.accountUserId ?? null,
+      deleted_at: null,
+      deleted_by: null,
       created_at: nowIso(),
       updated_at: nowIso(),
       created_by: input.createdBy,
@@ -124,16 +134,17 @@ export class AgentsRepository {
     return row;
   }
 
+  /** The `deleted_at IS NULL` guard is what stops a deleted principal being brought back to `active`. */
   async setStatus(id: string, status: AgentStatus, updatedBy: string): Promise<void> {
     await this.db
-      .prepare("UPDATE agents SET status = ?1, updated_at = ?2, updated_by = ?3 WHERE id = ?4")
+      .prepare("UPDATE agents SET status = ?1, updated_at = ?2, updated_by = ?3 WHERE id = ?4 AND deleted_at IS NULL")
       .bind(status, nowIso(), updatedBy, id)
       .run();
   }
 
   async rotateRpcKey(id: string, rpcKeyHash: string, updatedBy: string): Promise<void> {
     await this.db
-      .prepare("UPDATE agents SET rpc_key_hash = ?1, updated_at = ?2, updated_by = ?3 WHERE id = ?4")
+      .prepare("UPDATE agents SET rpc_key_hash = ?1, updated_at = ?2, updated_by = ?3 WHERE id = ?4 AND deleted_at IS NULL")
       .bind(rpcKeyHash, nowIso(), updatedBy, id)
       .run();
   }
@@ -159,8 +170,88 @@ export class AgentsRepository {
     return results.map((r) => r.name);
   }
 
+  /**
+   * How many records still point at this principal.
+   *
+   * The three tables named here are the ones with no cascade, and they are the
+   * ones worth protecting: who Athenaeum decided a caller was, who reported a
+   * fact was wrong, and who asked for a value to change. A non-zero count is
+   * what makes deletion a tombstone rather than a DELETE -- see migration 0007.
+   */
+  async countReferences(agentId: string): Promise<number> {
+    const row = await this.db
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM audit_events WHERE actor_agent_id = ?1)
+         + (SELECT COUNT(*) FROM knowledge_feedback WHERE submitted_by_agent_id = ?1)
+         + (SELECT COUNT(*) FROM fact_proposals WHERE proposed_by = ?1 OR reviewed_by = ?1)
+           AS reference_count`
+      )
+      .bind(agentId)
+      .first<{ reference_count: number }>();
+    return row?.reference_count ?? 0;
+  }
+
+  /**
+   * Destroys a principal that left no trace. Roles and quotas go with it
+   * through the cascades already on those tables.
+   *
+   * Conditional on the row still being revoked and not already a tombstone, so
+   * a race against a status change cannot destroy a principal that has just
+   * been made active again.
+   */
+  async purge(id: string): Promise<boolean> {
+    const result = await this.db
+      .prepare("DELETE FROM agents WHERE id = ?1 AND status = 'revoked' AND deleted_at IS NULL")
+      .bind(id)
+      .run();
+    return result.meta.changes > 0;
+  }
+
+  /**
+   * Turns a principal into a tombstone.
+   *
+   * Every credential binding is cleared in the same statement that marks it
+   * deleted: the RPC key hash and the Account client/user link. Both halves of
+   * that matter. Nothing is left to authenticate with, and -- because
+   * `account_client_id` and `account_user_id` are UNIQUE -- clearing them is
+   * what allows a fresh principal to be created for the same Account identity
+   * afterwards, which is usually the reason the old one was being deleted.
+   *
+   * `auth_mode` becomes 'access' because the CHECK constraint from migration
+   * 0002 requires credential material consistent with the mode ('rpc' needs a
+   * key hash, 'account' needs exactly one Account link), and 'access' is its
+   * only branch that requires none. Widening that CHECK would mean rebuilding
+   * the table, which is the cascade hazard that shaped migrations 0003 and
+   * 0005. It does not make the tombstone reachable through the Cloudflare
+   * Access path: that path resolves through `findByAgentKey`, which excludes
+   * deleted rows, and then requires `status = 'active'`, which a tombstone is
+   * not -- and there is no credential left to present in any case.
+   *
+   * The name and key stay: an audit event naming this principal is unreadable
+   * without them.
+   */
+  async softDelete(id: string, deletedBy: string): Promise<AgentRow | null> {
+    const now = nowIso();
+    const row = await this.db
+      .prepare(
+        `UPDATE agents
+            SET deleted_at = ?1, deleted_by = ?2, updated_at = ?1, updated_by = ?2,
+                auth_mode = 'access',
+                rpc_key_hash = NULL, account_client_id = NULL, account_user_id = NULL
+          WHERE id = ?3 AND status = 'revoked' AND deleted_at IS NULL
+        RETURNING *`
+      )
+      .bind(now, deletedBy, id)
+      .first<AgentRow>();
+    return row ?? null;
+  }
+
   async list(options: ListAgentsOptions): Promise<AgentRow[]> {
-    const conditions: string[] = [];
+    // Deleted principals are gone from Access by default. `includeDeleted`
+    // exists for the one caller with a reason to see a tombstone: an operator
+    // asking what happened to a principal an audit event still names.
+    const conditions: string[] = options.includeDeleted === true ? [] : ["deleted_at IS NULL"];
     const params: unknown[] = [];
     if (options.status) {
       conditions.push(`status = ?${params.length + 1}`);

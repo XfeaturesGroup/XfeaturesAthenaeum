@@ -4,6 +4,7 @@ import {
   handleSetAgentStatus,
   handleSetAgentQuota,
   handleCreateAgent,
+  handleDeleteAgent,
   handleListAgents,
   handleGetAgent,
   handleAssignAgentRole,
@@ -107,6 +108,7 @@ export function buildRouter(): Router {
   router.post("/v1/admin/agents", handleCreateAgent);
   router.get("/v1/admin/agents", handleListAgents);
   router.get("/v1/admin/agents/:id", handleGetAgent);
+  router.delete("/v1/admin/agents/:id", handleDeleteAgent);
   router.patch("/v1/admin/agents/:id/status", handleSetAgentStatus);
   router.patch("/v1/admin/agents/:id/quota", handleSetAgentQuota);
   router.post("/v1/admin/agents/:id/roles", handleAssignAgentRole);

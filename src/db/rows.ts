@@ -21,6 +21,14 @@ export interface AgentRow {
   account_client_id: string | null;
   /** Xfeatures Account users.id, for USER principals. */
   account_user_id: string | null;
+  /**
+   * When this principal was removed from Access. A row with this set is a
+   * tombstone: it holds no credential material, appears in no listing, and can
+   * never authenticate -- it exists only so the audit events, feedback and
+   * proposals that name it still point at something (migration 0007).
+   */
+  deleted_at: string | null;
+  deleted_by: string | null;
   created_at: string;
   updated_at: string;
   created_by: string | null;

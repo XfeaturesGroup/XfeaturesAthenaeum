@@ -419,3 +419,92 @@ export async function handleUnassignAgentRole(request: Request, ctx: RouteContex
 
   return jsonResponse({ request_id: ctx.requestId, agent: result });
 }
+/**
+ * Removes a principal from Access.
+ *
+ * Revoking is what stops a credential working, and it happens first: this route
+ * refuses anything that is not already `revoked`, so deletion is never the
+ * first thing that happens to a working identity, and an operator always
+ * performs the reversible act before the irreversible one.
+ *
+ * What "deleted" means depends on whether there is history to protect, and the
+ * choice is made here rather than by the caller (migration 0007):
+ *
+ *   * Nothing references the principal -- it authenticated no request, filed no
+ *     feedback, proposed nothing. The row is destroyed, roles and quotas with
+ *     it. This is the mistyped-agent case, which is most of them.
+ *   * Anything references it. The row becomes a tombstone: gone from every
+ *     listing, every credential binding cleared so it can never authenticate or
+ *     be re-linked to an Account identity, and still there for the audit events
+ *     that name it to point at. An identity that could erase its own history by
+ *     being deleted would be worse than one that could not be deleted at all.
+ *
+ * A principal may not delete itself. HQ operates as a single machine principal,
+ * so without this an operator could cut the entire console off from Athenaeum
+ * with one click and have no way back in -- and the request would be authorized,
+ * which is precisely why the rule has to be here rather than in the console.
+ */
+export async function handleDeleteAgent(request: Request, ctx: RouteContext): Promise<Response> {
+  const agentId = ctx.params["id"] ?? "";
+  const services = buildServices(ctx.env);
+
+  const result = await runAuthenticatedOperation({
+    env: ctx.env,
+    requestId: ctx.requestId,
+    clientKey: ctx.clientKey,
+    authorization: { enforce: { action: "admin.agents" } },
+    resource: { type: "agent", id: agentId },
+    authenticate: () => authenticateHttpRequest(request, ctx.env),
+    handler: async (principal) => {
+      await enforceRateLimit(ctx.env, principal, "admin");
+
+      const agent = await services.agentsRepo.findById(agentId);
+      if (!agent) throw new ApiError(ErrorCode.NOT_FOUND, "Agent not found.");
+
+      if (agent.id === principal.agentId) {
+        throw new ApiError(ErrorCode.CONFLICT, "A principal cannot delete itself.");
+      }
+      if (agent.status !== "revoked") {
+        throw new ApiError(
+          ErrorCode.CONFLICT,
+          "Revoke this principal before deleting it. Revoking is what stops the credential working; deleting only removes the row."
+        );
+      }
+
+      // Recorded before the row goes: afterwards there is nothing left to ask
+      // what it was.
+      const roles = await services.agentsRepo.listRoleNames(agent.id);
+      const references = await services.agentsRepo.countReferences(agent.id);
+
+      const outcome = references === 0 ? "purged" : "tombstoned";
+      const removed =
+        references === 0
+          ? await services.agentsRepo.purge(agent.id)
+          : (await services.agentsRepo.softDelete(agent.id, principal.agentId)) !== null;
+
+      // The guards inside both statements repeat the status check, so a
+      // concurrent re-activation loses the race rather than being deleted.
+      if (!removed) throw new ApiError(ErrorCode.CONFLICT, "This principal changed while it was being deleted.");
+
+      await auditChange({
+        env: ctx.env,
+        requestId: ctx.requestId,
+        action: "admin.agents.delete",
+        principal,
+        resource: { type: "agent", id: agentId },
+        oldValue: {
+          agent_key: agent.agent_key,
+          name: agent.name,
+          principal_type: agent.principal_type,
+          auth_mode: agent.auth_mode,
+          roles
+        },
+        newValue: { outcome, references }
+      });
+
+      return { id: agentId, agent_key: agent.agent_key, outcome };
+    }
+  });
+
+  return jsonResponse({ request_id: ctx.requestId, agent: result });
+}

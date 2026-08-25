@@ -25,6 +25,16 @@ Notable changes to Xfeatures Athenaeum. Format follows
 
 ### Added
 
+- **A principal can be removed from Access** (migration `0007`), which until now
+  could only be revoked. Refused unless it is already revoked, and refused for
+  the caller's own principal -- HQ is one machine principal, so one authorized
+  click would otherwise cut the console off with no way back. A principal that
+  authenticated no request, filed no feedback and proposed nothing is destroyed
+  outright; one that did any of those becomes a tombstone, gone from every
+  listing and lookup with every credential binding cleared, so the audit events
+  that name it still point at something. An identity able to erase its own
+  history by being deleted would be worse than one that could not be deleted at
+  all.
 - **Facts can be searched.** `POST /v1/knowledge/search` now consults both
   halves of the knowledge base and says which is which in each result's `type`;
   `include` selects one half, `namespace` narrows the fact half. The matching is

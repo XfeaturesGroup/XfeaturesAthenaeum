@@ -46,6 +46,7 @@ const ADMIN_ROUTES: { method: string; path: string; body?: unknown }[] = [
   { method: "POST", path: "/v1/admin/agents", body: { agent_key: "evil", name: "Evil", environment: "development", auth_mode: "rpc", roles: ["knowledge-admin"] } },
   { method: "GET", path: "/v1/admin/agents" },
   { method: "GET", path: "/v1/admin/agents/some-id" },
+  { method: "DELETE", path: "/v1/admin/agents/some-id" },
   { method: "PATCH", path: "/v1/admin/agents/some-id/status", body: { status: "revoked" } },
   { method: "PATCH", path: "/v1/admin/agents/some-id/quota", body: { max_searches_per_day: 100 } },
   { method: "POST", path: "/v1/admin/agents/some-id/roles", body: { role: "support-agent" } },
