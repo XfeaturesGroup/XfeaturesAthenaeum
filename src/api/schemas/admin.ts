@@ -125,3 +125,62 @@ export const listDocumentsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(LIMITS.PAGINATION_MAX).default(LIMITS.PAGINATION_DEFAULT),
   offset: z.coerce.number().int().min(0).default(0)
 });
+
+/**
+ * Query for the ingestion listing. Filtering happens in SQL rather than in the
+ * client: an operator looking for what failed should not have to pull a page
+ * of successes to find it.
+ */
+export const listIngestionQuerySchema = z.object({
+  status: z.enum(["queued", "processing", "completed", "failed"]).optional(),
+  limit: z.coerce.number().int().min(1).max(LIMITS.PAGINATION_MAX).default(LIMITS.PAGINATION_DEFAULT),
+  offset: z.coerce.number().int().min(0).default(0)
+});
+
+/**
+ * Query for the audit listing. `decision` is the filter that matters most --
+ * refusals are the reason anyone opens this view -- and it is an enum rather
+ * than free text so a typo narrows to nothing visibly instead of silently
+ * returning an unfiltered page.
+ */
+export const listAuditQuerySchema = z.object({
+  actor_agent_id: z.string().min(1).max(100).optional(),
+  action: z
+    .string()
+    .min(1)
+    .max(100)
+    .regex(/^[a-zA-Z0-9._-]+$/, "Must be alphanumeric with . _ - only.")
+    .optional(),
+  decision: z.enum(["ALLOW", "DENY", "N/A"]).optional(),
+  limit: z.coerce.number().int().min(1).max(LIMITS.PAGINATION_MAX).default(LIMITS.PAGINATION_DEFAULT),
+  offset: z.coerce.number().int().min(0).default(0)
+});
+
+/**
+ * Query for the administrative fact listing. `namespace` narrows within what
+ * the caller may already read -- it can never widen it, which the service
+ * enforces against the principal's own namespace scope rather than trusting
+ * this parameter.
+ */
+export const listFactsQuerySchema = z.object({
+  namespace: slugLikeSchema.optional(),
+  status: z.enum(["active", "deprecated"]).optional(),
+  q: z.string().max(LIMITS.QUERY_MAX_LENGTH).optional(),
+  limit: z.coerce.number().int().min(1).max(LIMITS.PAGINATION_MAX).default(LIMITS.PAGINATION_DEFAULT),
+  offset: z.coerce.number().int().min(0).default(0)
+});
+/** Query for the fact review queue. */
+export const listFactProposalsQuerySchema = z.object({
+  status: z.enum(["pending", "approved", "rejected"]).optional(),
+  limit: z.coerce.number().int().min(1).max(LIMITS.PAGINATION_MAX).default(LIMITS.PAGINATION_DEFAULT),
+  offset: z.coerce.number().int().min(0).default(0)
+});
+
+/**
+ * A review decision. The note is the reviewer's own words and is stored with
+ * the decision -- for a rejection it is usually the only thing that tells the
+ * proposer what to fix.
+ */
+export const reviewFactProposalSchema = z.object({
+  note: z.string().max(LIMITS.DESCRIPTION_MAX_LENGTH).optional()
+});

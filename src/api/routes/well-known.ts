@@ -49,3 +49,25 @@ export async function handleProtectedResourceMetadata(request: Request, ctx: Rou
     resource_documentation: "https://github.com/XfeaturesGroup/XfeaturesAthenaeum#readme"
   });
 }
+
+/**
+ * OpenAI Plugin Directory domain-control challenge.
+ *
+ * The challenge is deliberately served as plain text from a public,
+ * origin-root well-known URL. The value is a deploy-time secret instead of a
+ * checked-in constant so it can be rotated for later verification attempts.
+ */
+// eslint-disable-next-line @typescript-eslint/require-await
+export async function handleOpenAiAppsChallenge(_request: Request, ctx: RouteContext): Promise<Response> {
+  const token = ctx.env.OPENAI_APPS_CHALLENGE_TOKEN;
+  if (token === undefined || token.length === 0) {
+    return new Response("Not found.\n", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
+
+  return new Response(token, {
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Type": "text/plain; charset=utf-8"
+    }
+  });
+}

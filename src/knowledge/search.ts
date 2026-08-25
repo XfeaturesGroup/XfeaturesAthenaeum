@@ -4,6 +4,7 @@ import type { Principal } from "../auth/types";
 import { LIMITS, type SearchDomain } from "../config";
 import type { DocumentsRepository } from "../repositories/documents.repository";
 import type { KnowledgeSearchProvider } from "../search/types";
+import type { FactSearchService } from "./fact-search";
 import { log } from "../utils/logging";
 import { isWithinValidityWindow } from "../utils/time";
 import { ApiError, ErrorCode } from "../utils/responses";
@@ -14,11 +15,37 @@ export interface SearchKnowledgeRequest {
   domain?: SearchDomain;
   language?: string;
   limit?: number;
+  /**
+   * Which half of the knowledge base to consult. Facts are exact stored values;
+   * documents are passages retrieved semantically. Default is both, because a
+   * caller that does not know which one holds its answer is the normal case --
+   * and answering a price question from a passage that mentions the price,
+   * when the price itself is one table away, is the failure facts exist to
+   * prevent.
+   */
+  include?: SearchInclude;
+  /** Narrows fact results to one namespace the caller can already read. */
+  namespace?: string;
 }
+
+export type SearchInclude = "documents" | "facts" | "all";
 
 export interface SearchKnowledgeResponse {
   results: SearchResultDTO[];
   reason?: "NO_RELIABLE_MATCH";
+}
+
+/**
+ * One answer out of the two halves.
+ *
+ * `NO_RELIABLE_MATCH` means neither half found anything -- it is the signal a
+ * caller is meant to relay as "the knowledge base does not say", so it must not
+ * be reported while the other half has an answer in hand.
+ */
+function withFacts(factResults: SearchResultDTO[], documentResults: SearchResultDTO[]): SearchKnowledgeResponse {
+  const results = [...factResults, ...documentResults];
+  if (results.length === 0) return { results: [], reason: "NO_RELIABLE_MATCH" };
+  return { results };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -34,7 +61,8 @@ function clamp(value: number, min: number, max: number): number {
 export class SearchService {
   constructor(
     private readonly provider: KnowledgeSearchProvider,
-    private readonly documentsRepo: DocumentsRepository
+    private readonly documentsRepo: DocumentsRepository,
+    private readonly factSearch: FactSearchService
   ) {}
 
   async searchKnowledge(principal: Principal, request: SearchKnowledgeRequest): Promise<SearchKnowledgeResponse> {
@@ -44,7 +72,9 @@ export class SearchService {
     log.info("knowledge_search", {
       agent_id: principal.agentId,
       domain: request.domain ?? null,
+      include: request.include ?? "all",
       result_count: response.results.length,
+      fact_count: response.results.filter((result) => result.type === "fact").length,
       duration_ms: Date.now() - startedAt
     });
     if (response.reason === "NO_RELIABLE_MATCH") {
@@ -61,11 +91,31 @@ export class SearchService {
       throw new ApiError(ErrorCode.INVALID_REQUEST, "Query is empty or exceeds the maximum length.");
     }
 
+    const include = request.include ?? "all";
+
+    // Facts first, and not because their scores are higher -- the two halves
+    // are ranked by different means and their numbers are not comparable. A
+    // stored value simply answers "what is X" better than a passage that
+    // mentions X, which is the entire premise of keeping facts separate from
+    // documents. Each half stays ordered by its own ranking within the group.
+    const factResults =
+      include === "documents"
+        ? []
+        : await this.factSearch.search(principal, {
+            query,
+            namespace: request.namespace,
+            limit: request.limit
+          });
+
+    if (include === "facts") {
+      return factResults.length > 0 ? { results: factResults } : { results: [], reason: "NO_RELIABLE_MATCH" };
+    }
+
     // The classification set is never client-supplied -- it is
     // derived entirely from the authenticated principal's permissions.
     const classifications = permittedClassifications(principal);
     if (classifications.length === 0) {
-      return { results: [], reason: "NO_RELIABLE_MATCH" };
+      return withFacts(factResults, []);
     }
 
     // SR-004: the domain filter is derived from the principal FIRST, then
@@ -78,7 +128,7 @@ export class SearchService {
     let domains: string[] | undefined;
     if (scope.kind === "enumerated") {
       if (scope.domains.length === 0) {
-        return { results: [], reason: "NO_RELIABLE_MATCH" };
+        return withFacts(factResults, []);
       }
       domains = scope.domains;
     }
@@ -87,7 +137,7 @@ export class SearchService {
     // this parameter to broaden its own access.
     if (request.domain) {
       if (!hasPermission(principal.permissions, `documents.read.${request.domain}`)) {
-        return { results: [], reason: "NO_RELIABLE_MATCH" };
+        return withFacts(factResults, []);
       }
       domains = [request.domain];
     }
@@ -101,7 +151,7 @@ export class SearchService {
       minConfidence: LIMITS.SEARCH_MIN_CONFIDENCE_DEFAULT
     });
     if (chunks.length === 0) {
-      return { results: [], reason: "NO_RELIABLE_MATCH" };
+      return withFacts(factResults, []);
     }
 
     const documentIds = [...new Set(chunks.map((c) => c.documentId).filter((id): id is string => id !== null))];
@@ -145,9 +195,6 @@ export class SearchService {
       });
     }
 
-    if (results.length === 0) {
-      return { results: [], reason: "NO_RELIABLE_MATCH" };
-    }
-    return { results };
+    return withFacts(factResults, results);
   }
 }

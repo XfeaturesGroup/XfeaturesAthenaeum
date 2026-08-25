@@ -4,11 +4,13 @@ import {
   handleSetAgentStatus,
   handleSetAgentQuota,
   handleCreateAgent,
+  handleDeleteAgent,
   handleListAgents,
   handleGetAgent,
   handleAssignAgentRole,
   handleUnassignAgentRole
 } from "./admin/agents";
+import { handleApproveFactProposal, handleListFactProposals, handleRejectFactProposal } from "./admin/fact-proposals";
 import { handleListRoles } from "./admin/roles";
 import { handleListAuditEvents } from "./admin/audit";
 import {
@@ -25,16 +27,26 @@ import {
   handleSubmitForReview,
   handleTransitionDocumentStatus
 } from "./admin/documents";
-import { handleCreateFact, handleDeprecateFact, handleRollbackFact, handleUpdateFact } from "./admin/facts";
+import {
+  handleCreateFact,
+  handleDeprecateFact,
+  handleListFactTrash,
+  handleListFactVersions,
+  handleListFactsForAdmin,
+  handleRestoreFact,
+  handleRollbackFact,
+  handleTrashFact,
+  handleUpdateFact
+} from "./admin/facts";
 import { handleListIngestionJobs, handleReindexAll, handleReindexDocument } from "./admin/ingestion";
 import { handleGetDocument } from "./documents";
-import { handleListFacts, handleGetFact } from "./facts";
+import { handleListFacts, handleGetFact, handleListFactNamespaces } from "./facts";
 import { handleSubmitFeedback } from "./feedback";
 import { handleDependencyHealth, handleHealth } from "./health";
 import { handleGetPolicy } from "./policies";
 import { handleGetPlan, handleGetProduct } from "./products";
 import { handleSearch } from "./search";
-import { handleProtectedResourceMetadata } from "./well-known";
+import { handleOpenAiAppsChallenge, handleProtectedResourceMetadata } from "./well-known";
 
 export function buildRouter(): Router {
   const router = new Router();
@@ -42,9 +54,11 @@ export function buildRouter(): Router {
   router.get("/health", handleHealth);
   router.get("/v1/admin/health/dependencies", handleDependencyHealth);
   router.get("/.well-known/oauth-protected-resource", handleProtectedResourceMetadata);
+  router.get("/.well-known/openai-apps-challenge", handleOpenAiAppsChallenge);
 
   router.post("/v1/knowledge/search", handleSearch);
 
+  router.get("/v1/facts", handleListFactNamespaces);
   router.get("/v1/facts/:namespace", handleListFacts);
   router.get("/v1/facts/:namespace/:key", handleGetFact);
 
@@ -58,10 +72,23 @@ export function buildRouter(): Router {
   router.post("/v1/feedback", handleSubmitFeedback);
 
   // --- Admin surface (logically distinct from read-only routes) ---
+  router.get("/v1/admin/facts", handleListFactsForAdmin);
   router.post("/v1/admin/facts", handleCreateFact);
+  // `trash` is a view, not a namespace: this path has one segment where
+  // :namespace/:key has two, so the two patterns cannot collide.
+  router.get("/v1/admin/facts/trash", handleListFactTrash);
   router.patch("/v1/admin/facts/:namespace/:key", handleUpdateFact);
   router.delete("/v1/admin/facts/:namespace/:key", handleDeprecateFact);
+  router.get("/v1/admin/facts/:namespace/:key/versions", handleListFactVersions);
   router.post("/v1/admin/facts/:namespace/:key/rollback", handleRollbackFact);
+  router.post("/v1/admin/facts/:namespace/:key/trash", handleTrashFact);
+  router.post("/v1/admin/facts/:namespace/:key/restore", handleRestoreFact);
+
+  // The review queue for facts proposed over MCP. Nothing an agent proposes
+  // changes what the platform answers until one of these approves it.
+  router.get("/v1/admin/fact-proposals", handleListFactProposals);
+  router.post("/v1/admin/fact-proposals/:id/approve", handleApproveFactProposal);
+  router.post("/v1/admin/fact-proposals/:id/reject", handleRejectFactProposal);
 
   router.get("/v1/admin/documents", handleListDocuments);
   router.get("/v1/admin/documents/:id", handleGetDocumentForAdmin);
@@ -81,6 +108,7 @@ export function buildRouter(): Router {
   router.post("/v1/admin/agents", handleCreateAgent);
   router.get("/v1/admin/agents", handleListAgents);
   router.get("/v1/admin/agents/:id", handleGetAgent);
+  router.delete("/v1/admin/agents/:id", handleDeleteAgent);
   router.patch("/v1/admin/agents/:id/status", handleSetAgentStatus);
   router.patch("/v1/admin/agents/:id/quota", handleSetAgentQuota);
   router.post("/v1/admin/agents/:id/roles", handleAssignAgentRole);

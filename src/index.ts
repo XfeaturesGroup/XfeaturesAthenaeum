@@ -24,14 +24,22 @@ export default {
   scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): void {
     ctx.waitUntil(
       purgeExpiredTrash(env).then((outcome) => {
-        if (outcome.eligible > 0 || outcome.failures.length > 0) {
+        const touched =
+          outcome.eligible > 0 ||
+          outcome.failures.length > 0 ||
+          outcome.facts.eligible > 0 ||
+          outcome.facts.failures.length > 0;
+        if (touched) {
           console.log(
             JSON.stringify({
               event: "trash_purge",
               eligible: outcome.eligible,
               purged: outcome.purged.length,
               objects_deleted: outcome.objectsDeleted,
-              failures: outcome.failures.length
+              failures: outcome.failures.length,
+              facts_eligible: outcome.facts.eligible,
+              facts_purged: outcome.facts.purged.length,
+              facts_failures: outcome.facts.failures.length
             })
           );
         }

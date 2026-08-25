@@ -7,6 +7,14 @@ export type GlobalAction =
   | "knowledge.search"
   | "facts.write"
   /**
+   * Propose a fact and hand it to a human reviewer. Separate from
+   * `facts.write` for the reason SR-025 separated `documents.draft` from
+   * `documents.write`: proposing is asking, writing is acting, and a role
+   * belongs to a credential rather than to the transport it was handed to.
+   * Everything that may write facts also holds this.
+   */
+  | "facts.propose"
+  /**
    * Filing a NEW document and submitting it for human review. Deliberately
    * separate from `documents.write` (SR-025): proposing knowledge and revising
    * knowledge that already exists are different acts with different blast
@@ -161,4 +169,35 @@ export function documentDomainScope(principal: Principal): DocumentDomainScope {
     }
   }
   return { kind: "enumerated", domains };
+}
+
+const FACT_READ_PREFIX = "facts.read.";
+
+/**
+ * The fact namespaces a principal can read, in the same shape and for the same
+ * reason as `documentDomainScope`: a listing that spans namespaces has to be
+ * bounded BEFORE the query runs, not filtered afterwards, or an unreadable row
+ * consumes the page budget and the caller learns how many facts it cannot see.
+ *
+ * `all` means the principal holds `facts.read.*`. `enumerated` lists exactly
+ * the namespaces granted; empty means the principal can read no fact at all and
+ * the caller must short-circuit rather than query unfiltered.
+ *
+ * Sound only because `permissionSatisfies` rejects wildcards shallower than
+ * `<a>.<b>.*`, so `facts.*` cannot silently grant reads outside this scan.
+ */
+export type FactNamespaceScope = { kind: "all" } | { kind: "enumerated"; namespaces: string[] };
+
+export function factNamespaceScope(principal: Principal): FactNamespaceScope {
+  const namespaces: string[] = [];
+  for (const granted of principal.permissions) {
+    if (granted === `${FACT_READ_PREFIX}*`) {
+      return { kind: "all" };
+    }
+    if (granted.startsWith(FACT_READ_PREFIX)) {
+      const namespace = granted.slice(FACT_READ_PREFIX.length);
+      if (namespace.length > 0) namespaces.push(namespace);
+    }
+  }
+  return { kind: "enumerated", namespaces };
 }

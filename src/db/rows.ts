@@ -21,6 +21,14 @@ export interface AgentRow {
   account_client_id: string | null;
   /** Xfeatures Account users.id, for USER principals. */
   account_user_id: string | null;
+  /**
+   * When this principal was removed from Access. A row with this set is a
+   * tombstone: it holds no credential material, appears in no listing, and can
+   * never authenticate -- it exists only so the audit events, feedback and
+   * proposals that name it still point at something (migration 0007).
+   */
+  deleted_at: string | null;
+  deleted_by: string | null;
   created_at: string;
   updated_at: string;
   created_by: string | null;
@@ -44,6 +52,12 @@ export interface PermissionRow {
 
 export type FactStatus = "active" | "deprecated";
 
+/**
+ * What the API reports. `trashed` is derived from `trashed_at` rather than
+ * stored -- see migration 0005 for why that is a column and not a third status.
+ */
+export type FactStatusView = FactStatus | "trashed";
+
 export interface FactRow {
   id: string;
   namespace: string;
@@ -57,10 +71,44 @@ export interface FactRow {
   source_id: string | null;
   valid_from: string | null;
   valid_until: string | null;
+  /** ISO timestamp the fact entered the trash; NULL unless it is in the trash. */
+  trashed_at: string | null;
+  /** The state a restore returns it to. Recorded when trashed, because it cannot be inferred later. */
+  status_before_trash: FactStatus | null;
   created_at: string;
   updated_at: string;
   created_by: string | null;
   updated_by: string | null;
+}
+
+export type FactProposalStatus = "pending" | "approved" | "rejected";
+
+/**
+ * A fact an agent has asked a human to accept.
+ *
+ * Deliberately its own table rather than a status on `facts` (migration 0006):
+ * every read path filters facts by status, and a proposal one forgotten WHERE
+ * clause away from being served as knowledge would eventually be served as
+ * knowledge.
+ */
+export interface FactProposalRow {
+  id: string;
+  namespace: string;
+  key: string;
+  value_json: string;
+  title: string | null;
+  description: string | null;
+  classification: Classification;
+  rationale: string | null;
+  /** The version the proposer believed was current; NULL when the fact did not exist. */
+  based_on_version: number | null;
+  status: FactProposalStatus;
+  proposed_by: string;
+  created_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  resulting_version: number | null;
 }
 
 /**

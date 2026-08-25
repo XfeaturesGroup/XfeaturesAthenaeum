@@ -20,8 +20,14 @@ export interface RecordAuditEventInput {
 export interface ListAuditEventsOptions {
   actorAgentId?: string;
   action?: string;
+  decision?: AuditDecision;
   limit: number;
   offset: number;
+}
+
+/** An audit event with the actor's key resolved; NULL once the principal itself is gone. */
+export interface AuditEventWithActorRow extends AuditEventRow {
+  actor_agent_key: string | null;
 }
 
 export class AuditRepository {
@@ -52,25 +58,41 @@ export class AuditRepository {
       .run();
   }
 
-  async list(options: ListAuditEventsOptions): Promise<AuditEventRow[]> {
+  /**
+   * A page of the trail, with the actor's key resolved.
+   *
+   * The join is LEFT and the filters are applied in SQL rather than by the
+   * caller: an operator looking for refusals should not have to pull an
+   * unfiltered page and hope the one they need is on it.
+   */
+  async list(options: ListAuditEventsOptions): Promise<AuditEventWithActorRow[]> {
     const conditions: string[] = [];
     const params: unknown[] = [];
     if (options.actorAgentId) {
-      conditions.push(`actor_agent_id = ?${params.length + 1}`);
+      conditions.push(`event.actor_agent_id = ?${params.length + 1}`);
       params.push(options.actorAgentId);
     }
     if (options.action) {
-      conditions.push(`action = ?${params.length + 1}`);
+      conditions.push(`event.action = ?${params.length + 1}`);
       params.push(options.action);
+    }
+    if (options.decision) {
+      conditions.push(`event.decision = ?${params.length + 1}`);
+      params.push(options.decision);
     }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     params.push(options.limit, options.offset);
     const { results } = await this.db
       .prepare(
-        `SELECT * FROM audit_events ${where} ORDER BY occurred_at DESC LIMIT ?${params.length - 1} OFFSET ?${params.length}`
+        `SELECT event.*, actor.agent_key AS actor_agent_key
+           FROM audit_events event
+           LEFT JOIN agents actor ON actor.id = event.actor_agent_id
+           ${where}
+          ORDER BY event.occurred_at DESC
+          LIMIT ?${params.length - 1} OFFSET ?${params.length}`
       )
       .bind(...params)
-      .all<AuditEventRow>();
+      .all<AuditEventWithActorRow>();
     return results;
   }
 }

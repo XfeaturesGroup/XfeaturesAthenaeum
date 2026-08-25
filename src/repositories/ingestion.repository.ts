@@ -1,6 +1,14 @@
-import type { IngestionJobRow, IngestionJobStatus, IngestionJobType } from "../db/rows";
+import type { DocumentStatus, IngestionJobRow, IngestionJobStatus, IngestionJobType } from "../db/rows";
 import { generateId } from "../utils/ids";
 import { nowIso } from "../utils/time";
+
+/** An ingestion job plus the document columns needed to recognise it; document fields are NULL once the document is purged. */
+export interface IngestionJobWithDocumentRow extends IngestionJobRow {
+  document_title: string | null;
+  document_slug: string | null;
+  document_status: DocumentStatus | null;
+  document_trashed_at: string | null;
+}
 
 export class IngestionRepository {
   constructor(private readonly db: D1Database) {}
@@ -58,6 +66,41 @@ export class IngestionRepository {
       ? this.db.prepare("SELECT * FROM ingestion_jobs WHERE status = ?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3").bind(status, limit, offset)
       : this.db.prepare("SELECT * FROM ingestion_jobs ORDER BY created_at DESC LIMIT ?1 OFFSET ?2").bind(limit, offset);
     const { results } = await query.all<IngestionJobRow>();
+    return results;
+  }
+
+  /**
+   * The same page, with just enough of the document attached to recognise the
+   * row. A LEFT JOIN, never an inner one: a job outlives the document it
+   * indexed (the trash purge removes the document row and keeps the job), and
+   * an inner join would erase exactly the history that explains why something
+   * disappeared from the index.
+   */
+  async listWithDocument(
+    status: IngestionJobStatus | undefined,
+    limit: number,
+    offset: number
+  ): Promise<IngestionJobWithDocumentRow[]> {
+    const columns = `job.id, job.document_id, job.job_type, job.status, job.attempt_count, job.last_error_code,
+                     job.created_at, job.updated_at,
+                     doc.title AS document_title, doc.slug AS document_slug,
+                     doc.status AS document_status, doc.trashed_at AS document_trashed_at`;
+    const query = status
+      ? this.db
+          .prepare(
+            `SELECT ${columns} FROM ingestion_jobs job
+             LEFT JOIN documents doc ON doc.id = job.document_id
+             WHERE job.status = ?1 ORDER BY job.created_at DESC LIMIT ?2 OFFSET ?3`
+          )
+          .bind(status, limit, offset)
+      : this.db
+          .prepare(
+            `SELECT ${columns} FROM ingestion_jobs job
+             LEFT JOIN documents doc ON doc.id = job.document_id
+             ORDER BY job.created_at DESC LIMIT ?1 OFFSET ?2`
+          )
+          .bind(limit, offset);
+    const { results } = await query.all<IngestionJobWithDocumentRow>();
     return results;
   }
 }

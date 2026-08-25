@@ -35,12 +35,12 @@ touching HQ's Account identity — proven in the security suite.
 |---|---|
 | `athenaeum:documents:view` | List and open documents and facts |
 | `athenaeum:documents:manage` | Create drafts, edit facts |
-| `athenaeum:documents:publish` | Publish, deprecate, deprecate a fact |
+| `athenaeum:documents:publish` | Publish, deprecate, trash and restore a document or a fact, roll back |
 | `athenaeum:search` | Run authorized retrieval |
 | `athenaeum:ingestion:view` | See indexing state |
 | `athenaeum:ingestion:manage` | Request re-indexing |
 | `athenaeum:audit:view` | Read Athenaeum's audit trail |
-| `athenaeum:access:manage` | Reserved for principal management |
+| `athenaeum:access:manage` | Create, disable, revoke and delete principals; grant and withdraw their roles |
 
 Managing a document deliberately does not confer publishing it: drafting
 knowledge and approving it for every consumer of the platform are different
@@ -53,15 +53,38 @@ acts, and the split is enforced server-side.
   row because it decides who can read the document, and it defaults to
   INTERNAL rather than PUBLIC.
 - **Facts** — deterministic key/value knowledge answered from D1. Used where a
-  paraphrase would be a bug: prices, SLAs, limits.
+  paraphrase would be a bug: prices, SLAs, limits. Listed across every namespace
+  the console's principal can read, searchable by key, title and value, with
+  version history and a trash on the same 72-hour window documents have.
+  Deprecating and deleting are deliberately distinct: the first stops a fact
+  being answered and keeps every version, the second ends with the value and its
+  history destroyed by the scheduled purge. The namespaces themselves come from
+  Athenaeum, so a namespace nobody thought to add to the console is not thereby
+  invisible to every operator.
 - **Ingestion** — where a document sits between "stored" and "answerable". A
   published-but-not-yet-indexed document is not a failure, and showing that
   plainly stops an operator concluding the knowledge base is wrong when it is
   merely behind.
+- **Proposals** — facts an AI agent has asked a human to accept, over MCP.
+  Nothing in this queue has changed what the platform answers; approving is what
+  does, and it writes the fact under the operator's own authority rather than
+  the agent's. Each entry shows the value it would replace beside the value
+  proposed, the agent's stated reason, and a warning when the fact has moved on
+  since the proposal was written — Athenaeum refuses those rather than writing
+  over whoever changed it.
 - **Search** — the same authorized retrieval an agent gets, not a privileged
-  preview. Provenance shown with each result comes from the canonical D1 row.
+  preview. Covers both halves of the knowledge base and labels each result as a
+  stored fact or a document passage, because an operator who cannot tell them
+  apart will quote a paraphrase as if it were the number. Provenance shown with
+  each result comes from the canonical D1 row.
 - **Audit** — every decision Athenaeum made, refusals included. The actor is
   always derived server-side.
+- **Access** — who may reach Athenaeum and what each principal can do. A
+  principal can be revoked, which stops its credential, and then deleted, which
+  removes the row: Athenaeum destroys one that never did anything and keeps a
+  tombstone for one that did, so the audit events naming it still point at
+  something. A principal cannot delete itself, which is what stops the console
+  cutting itself off from Athenaeum with one authorized click.
 
 ## Proven end to end
 

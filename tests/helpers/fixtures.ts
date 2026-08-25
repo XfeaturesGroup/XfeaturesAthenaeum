@@ -26,6 +26,7 @@ const PERMISSIONS = [
   "facts.read.policies",
   "facts.read.secrets",
   "facts.write",
+  "facts.propose",
   "products.read",
   "prices.read",
   "network.read",
@@ -54,6 +55,16 @@ export const ROLE_FIXTURES = {
   // Holds administrative fact rights but NOT high classifications -- the
   // exact shape that made SR-002/SR-003 exploitable.
   "limited-fact-admin": ["admin.facts", "knowledge.classification.PUBLIC", "facts.read.products"],
+  // The same shape one step further along: it can actually write facts, so it
+  // reaches the checks that decide WHICH fact -- which is where approving a
+  // proposal could otherwise become a way to write a tier it cannot read.
+  "narrow-fact-reviewer": [
+    "admin.facts",
+    "facts.write",
+    "facts.propose",
+    "knowledge.classification.PUBLIC",
+    "facts.read.products"
+  ],
   // Proposes knowledge and hands it to a human. Deliberately lacks
   // documents.publish (the permission-level half of human-in-the-loop
   // publish) and, since SR-025, also lacks documents.write and
@@ -64,7 +75,11 @@ export const ROLE_FIXTURES = {
     "knowledge.classification.PUBLIC",
     "knowledge.classification.INTERNAL",
     "documents.read.public",
-    "documents.draft"
+    "documents.draft",
+    // Migration 0006: may ask for a fact to change, may not change one.
+    "facts.read.products",
+    "facts.read.plans",
+    "facts.propose"
   ],
   // Revises existing documents: everything the contributor has, plus the
   // administrative reach and documents.write. Holds PUBLIC/INTERNAL only, so

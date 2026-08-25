@@ -1,7 +1,9 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, it } from "vitest";
+import { FactSearchService } from "../../src/knowledge/fact-search";
 import { SearchService } from "../../src/knowledge/search";
 import { DocumentsRepository } from "../../src/repositories/documents.repository";
+import { FactsRepository } from "../../src/repositories/facts.repository";
 import type { KnowledgeSearchProvider, RetrievalChunk, RetrievalQuery } from "../../src/search/types";
 import type { Env } from "../../src/env";
 import { createAgent, createDocument, seedSecurityFixtures, type SeededAgent } from "../helpers/fixtures";
@@ -74,7 +76,7 @@ beforeAll(async () => {
 });
 
 function buildSearch(provider: SpyProvider): SearchService {
-  return new SearchService(provider, new DocumentsRepository(testEnv.DB));
+  return new SearchService(provider, new DocumentsRepository(testEnv.DB), new FactSearchService(new FactsRepository(testEnv.DB)));
 }
 
 /**
