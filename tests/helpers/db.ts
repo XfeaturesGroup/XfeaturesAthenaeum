@@ -12,6 +12,7 @@ import migration0004 from "../../migrations/0004_documents_draft_permission.sql?
 import migration0005 from "../../migrations/0005_fact_trash.sql?raw";
 import migration0006 from "../../migrations/0006_fact_proposals.sql?raw";
 import migration0007 from "../../migrations/0007_agent_deletion.sql?raw";
+import migration0008 from "../../migrations/0008_public_agent_public_knowledge.sql?raw";
 
 const MIGRATIONS: readonly string[] = [
   migration0001,
@@ -20,7 +21,8 @@ const MIGRATIONS: readonly string[] = [
   migration0004,
   migration0005,
   migration0006,
-  migration0007
+  migration0007,
+  migration0008
 ];
 
 /**
