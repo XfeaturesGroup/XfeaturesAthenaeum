@@ -21,6 +21,7 @@ INSERT INTO permissions (id, key, description) VALUES
   ('perm_facts_read_plans', 'facts.read.plans', 'Read facts in the plans namespace'),
   ('perm_facts_read_services', 'facts.read.services', 'Read facts in the services namespace'),
   ('perm_facts_read_policies', 'facts.read.policies', 'Read facts in the policies namespace'),
+  ('perm_facts_read_network', 'facts.read.network', 'Read facts in the network namespace'),
   ('perm_facts_read_all', 'facts.read.*', 'Read facts in any namespace'),
   ('perm_facts_write', 'facts.write', 'Create/update/deprecate facts'),
 
@@ -74,6 +75,12 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
   ('role_public_agent', 'perm_documents_read_public'),
   ('role_public_agent', 'perm_facts_read_products'),
   ('role_public_agent', 'perm_products_read'),
+  ('role_public_agent', 'perm_facts_read_plans'),
+  ('role_public_agent', 'perm_facts_read_policies'),
+  ('role_public_agent', 'perm_facts_read_services'),
+  ('role_public_agent', 'perm_facts_read_network'),
+  ('role_public_agent', 'perm_prices_read'),
+  ('role_public_agent', 'perm_documents_read_legal'),
   ('role_public_agent', 'perm_feedback_submit'),
 
   ('role_support_agent', 'perm_knowledge_search'),

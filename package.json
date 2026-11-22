@@ -23,22 +23,24 @@
     "verify": "npm run typecheck && npm run lint && npm run verify:openapi && npm test"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "^2.0.0",
-    "jose": "^6.2.9",
-    "zod": "^4.4.3"
+    "@modelcontextprotocol/server": "^2.4.0",
+    "jose": "^6.2.18",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.21.3",
-    "@cloudflare/workers-types": "^5.20260816.1",
-    "eslint": "^10.8.1",
+    "@cloudflare/vitest-pool-workers": "^0.23.0",
+    "@cloudflare/workers-types": "^5.20261121.1",
+    "eslint": "^10.15.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.67.0",
-    "vitest": "^4.1.10",
-    "wrangler": "^4.59.3"
+    "typescript-eslint": "^8.73.0",
+    "vitest": "^4.1.12",
+    "wrangler": "^4.166.0"
   },
   "allowScripts": {
     "esbuild@0.28.1": true,
-    "workerd@1.20260811.1": true
+    "esbuild@0.28.2": true,
+    "workerd@1.20260815.1": true,
+    "workerd@1.20261119.1": true
   },
   "keywords": [
     "athenaeum",
@@ -63,5 +65,13 @@
   "bugs": {
     "url": "https://github.com/XfeaturesGroup/XfeaturesAthenaeum/issues"
   },
-  "license": "SEE LICENSE IN LICENSE"
+  "license": "SEE LICENSE IN LICENSE",
+  "overrides": {
+    "@cloudflare/vitest-pool-workers": {
+      "wrangler": "$wrangler",
+      "zod": "$zod"
+    },
+    "undici": "^7.30.2",
+    "sharp": "^0.35.5"
+  }
 }

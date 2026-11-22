@@ -11,7 +11,7 @@ import { purgeExpiredTrash } from "../../src/maintenance/purge-trash";
 import { LIMITS } from "../../src/config";
 import { ErrorCode } from "../../src/utils/responses";
 import type { Env } from "../../src/env";
-import type { RetrievalChunk, RetrievalQuery, KnowledgeSearchProvider } from "../../src/search/types";
+import type { RetrievalChunk, KnowledgeSearchProvider } from "../../src/search/types";
 import { createAgent, seedSecurityFixtures } from "../helpers/fixtures";
 
 const testEnv = env as unknown as Env;
@@ -35,10 +35,9 @@ function buildService(): DocumentsService {
 /** Feeds retrieval whatever the engine is pretending to have returned. */
 class StagedProvider implements KnowledgeSearchProvider {
   staged: RetrievalChunk[] = [];
-  // eslint-disable-next-line @typescript-eslint/require-await
-  async search(query: RetrievalQuery): Promise<RetrievalChunk[]> {
-    void query; // the staged response is fixed; the query is irrelevant here
-    return this.staged;
+  // The staged response is fixed, so the query parameter is not even taken.
+  search(): Promise<RetrievalChunk[]> {
+    return Promise.resolve(this.staged);
   }
 }
 
